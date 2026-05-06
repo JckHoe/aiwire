@@ -1,6 +1,6 @@
 GO ?= $(shell which go 2>/dev/null)
 
-.PHONY: all help build clean test vet fmt \
+.PHONY: all help build clean test test-race vet fmt \
 	test-openai test-openrouter test-zai test-integration test-usage
 
 all: clean build test
@@ -14,6 +14,7 @@ help:
 	@echo "  vet              Run go vet"
 	@echo "  fmt              Run gofmt -w on all sources"
 	@echo "  test             Run unit tests (no network)"
+	@echo "  test-race        Run unit tests with the race detector"
 	@echo "  test-openai      Run integration tests against OpenAI       (needs OPENAI_API_KEY)"
 	@echo "  test-openrouter  Run integration tests against OpenRouter   (needs OPENROUTER_API_KEY)"
 	@echo "  test-zai         Run integration tests against Z.ai         (needs ZAI_API_KEY)"
@@ -35,6 +36,9 @@ clean:
 
 test:
 	$(GO) test -v ./...
+
+test-race:
+	$(GO) test -v -race ./...
 
 test-openai:
 	$(GO) test -v -tags=openai -count=1 ./...
