@@ -41,7 +41,7 @@ type AgentResult struct {
 	Provider    string
 	ToolCalls   []openai.ChatCompletionMessageToolCallUnion
 	ToolResults []ToolResult
-	Usage       openai.CompletionUsage
+	Usage       Usage
 }
 
 type Agent struct {
@@ -107,20 +107,6 @@ func (a *Agent) executeToolCall(
 	return
 }
 
-func addCompletionUsage(dst *openai.CompletionUsage, src openai.CompletionUsage) {
-	dst.PromptTokens += src.PromptTokens
-	dst.CompletionTokens += src.CompletionTokens
-	dst.TotalTokens += src.TotalTokens
-
-	dst.CompletionTokensDetails.AcceptedPredictionTokens += src.CompletionTokensDetails.AcceptedPredictionTokens
-	dst.CompletionTokensDetails.AudioTokens += src.CompletionTokensDetails.AudioTokens
-	dst.CompletionTokensDetails.ReasoningTokens += src.CompletionTokensDetails.ReasoningTokens
-	dst.CompletionTokensDetails.RejectedPredictionTokens += src.CompletionTokensDetails.RejectedPredictionTokens
-
-	dst.PromptTokensDetails.AudioTokens += src.PromptTokensDetails.AudioTokens
-	dst.PromptTokensDetails.CachedTokens += src.PromptTokensDetails.CachedTokens
-}
-
 func (a *Agent) Execute(
 	ctx context.Context,
 	messages []openai.ChatCompletionMessageParamUnion,
@@ -159,7 +145,7 @@ func (a *Agent) execute(
 	toolResults := make([]ToolResult, 0)
 	responseContent := ""
 	responseProvider := ""
-	totalUsage := openai.CompletionUsage{}
+	totalUsage := Usage{}
 
 	toolDefinitions := make([]openai.ChatCompletionToolUnionParam, 0)
 	toolsMap := make(map[string]Tool, 0)
@@ -175,7 +161,7 @@ func (a *Agent) execute(
 		var stepContent string
 		var stepProvider string
 		var stepToolCalls []openai.ChatCompletionMessageToolCallUnion
-		var stepUsage openai.CompletionUsage
+		var stepUsage Usage
 
 		if streamCallback != nil {
 			err := a.aiService.CompletionsStream(
@@ -217,7 +203,7 @@ func (a *Agent) execute(
 			stepUsage = completion.Usage
 		}
 
-		addCompletionUsage(&totalUsage, stepUsage)
+		totalUsage.Add(stepUsage)
 		if stepProvider != "" {
 			responseProvider = stepProvider
 		}
