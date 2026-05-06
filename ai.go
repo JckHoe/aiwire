@@ -128,6 +128,11 @@ func UsageFromOpenAI(u openai.CompletionUsage) Usage {
 			out.PromptTokensDetails.CacheCreationTokens = v
 		}
 	}
+	if out.PromptTokensDetails.CacheCreationTokens == 0 {
+		if v, ok := extraInt64(u.PromptTokensDetails.JSON.ExtraFields, "cache_write_tokens"); ok {
+			out.PromptTokensDetails.CacheCreationTokens = v
+		}
+	}
 
 	if v, ok := extraFloat64(u.JSON.ExtraFields, "cache_discount"); ok {
 		out.CacheDiscount = v
