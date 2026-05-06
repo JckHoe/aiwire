@@ -17,8 +17,8 @@ help:
 	@echo "  test-openai      Run integration tests against OpenAI       (needs OPENAI_API_KEY)"
 	@echo "  test-openrouter  Run integration tests against OpenRouter   (needs OPENROUTER_API_KEY)"
 	@echo "  test-zai         Run integration tests against Z.ai         (needs ZAI_API_KEY)"
-	@echo "  test-integration Run all integration tests"
 	@echo "  test-usage       Run usage/cache-token tests                (needs OPENAI_API_KEY and OPENROUTER_API_KEY)"
+	@echo "  test-integration Run all integration tests"
 	@echo "  clean            Clear the Go test cache"
 
 build:
@@ -45,7 +45,7 @@ test-openrouter:
 test-zai:
 	$(GO) test -v -tags=zai -count=1 ./...
 
-test-integration: test-openai test-openrouter test-zai
-
 test-usage:
 	$(GO) test -v -tags=usage -count=1 ./...
+
+test-integration: test-openai test-openrouter test-zai
