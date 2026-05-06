@@ -103,7 +103,7 @@ func TestUsage_OpenAI_Direct(t *testing.T) {
 	}
 
 	opts := CompletionOption{
-		Model:       "gpt-4.1-mini",
+		Model:       "gpt-5.4-mini",
 		Temperature: 0.0,
 	}
 
