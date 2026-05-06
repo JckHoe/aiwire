@@ -139,7 +139,7 @@ func (s *Service) ParamsCompletions(ctx context.Context, params openai.ChatCompl
 		Message:   message,
 		Reasoning: reasoningContent,
 		Provider:  routedProvider,
-		Usage:     completion.Usage,
+		Usage:     UsageFromOpenAI(completion.Usage),
 	}, nil
 }
 
@@ -170,7 +170,7 @@ func (s *Service) Completions(
 // ParamsCompletionsStream initiates a streaming completion request
 func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.ChatCompletionNewParams, provider *ProviderOption, reasoning *ReasoningOption, callback StreamCallback) error {
 	var response *http.Response
-	var finalUsage openai.CompletionUsage
+	var finalUsage Usage
 	hasFinalUsage := false
 	var stream interface {
 		Next() bool
@@ -203,7 +203,7 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 		}
 
 		if chunk.JSON.Usage.Valid() {
-			finalUsage = chunk.Usage
+			finalUsage = UsageFromOpenAI(chunk.Usage)
 			hasFinalUsage = true
 		}
 

@@ -10,14 +10,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func logUsage(t *testing.T, u openai.CompletionUsage) {
+func logUsage(t *testing.T, u Usage) {
 	t.Helper()
-	t.Logf("Usage: prompt=%d (cached=%d) completion=%d (reasoning=%d) total=%d",
+	t.Logf("Usage: prompt=%d (cache_read=%d, cache_write=%d) completion=%d (reasoning=%d) total=%d cost=%.6f discount=%.6f",
 		u.PromptTokens,
 		u.PromptTokensDetails.CachedTokens,
+		u.PromptTokensDetails.CacheCreationTokens,
 		u.CompletionTokens,
 		u.CompletionTokensDetails.ReasoningTokens,
 		u.TotalTokens,
+		u.Cost,
+		u.CacheDiscount,
 	)
 }
 
