@@ -115,21 +115,20 @@ func UsageFromOpenAI(u openai.CompletionUsage) Usage {
 		},
 	}
 
+	cacheCreationSet := false
 	if v, ok := extraInt64(u.JSON.ExtraFields, "cache_creation_input_tokens"); ok {
 		out.PromptTokensDetails.CacheCreationTokens = v
+		cacheCreationSet = true
 	}
-	if out.PromptTokensDetails.CachedTokens == 0 {
+	if !u.PromptTokensDetails.JSON.CachedTokens.Valid() {
 		if v, ok := extraInt64(u.JSON.ExtraFields, "cache_read_input_tokens"); ok {
 			out.PromptTokensDetails.CachedTokens = v
 		}
 	}
-	if out.PromptTokensDetails.CacheCreationTokens == 0 {
+	if !cacheCreationSet {
 		if v, ok := extraInt64(u.PromptTokensDetails.JSON.ExtraFields, "cache_creation_tokens"); ok {
 			out.PromptTokensDetails.CacheCreationTokens = v
-		}
-	}
-	if out.PromptTokensDetails.CacheCreationTokens == 0 {
-		if v, ok := extraInt64(u.PromptTokensDetails.JSON.ExtraFields, "cache_write_tokens"); ok {
+		} else if v, ok := extraInt64(u.PromptTokensDetails.JSON.ExtraFields, "cache_write_tokens"); ok {
 			out.PromptTokensDetails.CacheCreationTokens = v
 		}
 	}
