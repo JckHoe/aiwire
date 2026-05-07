@@ -35,11 +35,6 @@ func systemMessageWithCacheControl(text string) openai.ChatCompletionMessagePara
 	return openai.SystemMessage([]openai.ChatCompletionContentPartTextParam{part})
 }
 
-func runUsageCacheTest(t *testing.T, model string) {
-	t.Helper()
-	runUsageCacheTestWithProvider(t, model, &ProviderOption{AllowFallbacks: true}, false)
-}
-
 func runUsageCacheTestWithProvider(t *testing.T, model string, provider *ProviderOption, expectCacheWrite bool) {
 	t.Helper()
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
@@ -88,7 +83,59 @@ func TestUsage_OpenRouter_AnthropicSonnet46(t *testing.T) {
 }
 
 func TestUsage_OpenRouter_KimiK25(t *testing.T) {
-	runUsageCacheTest(t, "moonshotai/kimi-k2.5")
+	runUsageCacheTestWithProvider(t, "moonshotai/kimi-k2.5", &ProviderOption{
+		Sort:           "latency",
+		AllowFallbacks: true,
+	}, false)
+}
+
+func TestUsage_OpenRouter_GLM47(t *testing.T) {
+	runUsageCacheTestWithProvider(t, "z-ai/glm-4.7", &ProviderOption{
+		Sort:           "latency",
+		AllowFallbacks: true,
+	}, false)
+}
+
+func TestUsage_OpenRouter_OpenAIGPT5Mini(t *testing.T) {
+	apiKey := os.Getenv("OPENROUTER_API_KEY")
+	assert.NotEmpty(t, apiKey)
+
+	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	system := buildLongSystemPrompt()
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(system),
+		openai.UserMessage("Reply with the single word: hello."),
+	}
+
+	opts := CompletionOption{
+		Model:       "openai/gpt-5-mini",
+		Temperature: 0.0,
+		Provider: &ProviderOption{
+			Order:          []string{"openai"},
+			AllowFallbacks: false,
+		},
+	}
+
+	ctx := context.Background()
+
+	first, err := service.Completions(ctx, messages, nil, opts)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, first.Message.Content)
+	t.Logf("[openai/gpt-5-mini] first call provider=%s", first.Provider)
+	logUsage(t, first.Usage)
+
+	second, err := service.Completions(ctx, messages, nil, opts)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, second.Message.Content)
+	t.Logf("[openai/gpt-5-mini] second call provider=%s", second.Provider)
+	logUsage(t, second.Usage)
+
+	assert.Greater(t, second.Usage.PromptTokensDetails.CachedTokens, int64(0),
+		"expected cache_read tokens on second OpenRouter->OpenAI call")
+	assert.Equal(t, int64(0), first.Usage.PromptTokensDetails.CacheCreationTokens,
+		"OpenAI has no cache write tier")
+	assert.Equal(t, int64(0), second.Usage.PromptTokensDetails.CacheCreationTokens,
+		"OpenAI has no cache write tier")
 }
 
 type streamResult struct {
@@ -112,11 +159,6 @@ func collectStream(t *testing.T, service *Service, ctx context.Context, params o
 		return nil
 	})
 	return result, err
-}
-
-func runUsageCacheStreamTest(t *testing.T, model string) {
-	t.Helper()
-	runUsageCacheStreamTestWithProvider(t, model, &ProviderOption{AllowFallbacks: true}, false)
 }
 
 func runUsageCacheStreamTestWithProvider(t *testing.T, model string, provider *ProviderOption, expectCacheWrite bool) {
@@ -176,7 +218,71 @@ func TestUsage_OpenRouter_AnthropicSonnet46_Stream(t *testing.T) {
 }
 
 func TestUsage_OpenRouter_KimiK25_Stream(t *testing.T) {
-	runUsageCacheStreamTest(t, "moonshotai/kimi-k2.5")
+	runUsageCacheStreamTestWithProvider(t, "moonshotai/kimi-k2.5", &ProviderOption{
+		Sort:           "latency",
+		AllowFallbacks: true,
+	}, false)
+}
+
+func TestUsage_OpenRouter_GLM47_Stream(t *testing.T) {
+	runUsageCacheStreamTestWithProvider(t, "z-ai/glm-4.7", &ProviderOption{
+		Sort:           "latency",
+		AllowFallbacks: true,
+	}, false)
+}
+
+func TestUsage_OpenRouter_OpenAIGPT5Mini_Stream(t *testing.T) {
+	apiKey := os.Getenv("OPENROUTER_API_KEY")
+	assert.NotEmpty(t, apiKey)
+
+	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	system := buildLongSystemPrompt()
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage(system),
+		openai.UserMessage("Reply with the single word: hello."),
+	}
+
+	params := openai.ChatCompletionNewParams{
+		Messages:    messages,
+		Model:       "openai/gpt-5-mini",
+		Temperature: openai.Float(0.0),
+		StreamOptions: openai.ChatCompletionStreamOptionsParam{
+			IncludeUsage: openai.Bool(true),
+		},
+	}
+
+	provider := &ProviderOption{
+		Order:          []string{"openai"},
+		AllowFallbacks: false,
+	}
+
+	ctx := context.Background()
+
+	first, err := collectStream(t, service, ctx, params, provider)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, first.content)
+	t.Logf("[openai/gpt-5-mini stream] first call provider=%s", first.provider)
+	if assert.NotNil(t, first.usage, "expected usage on first stream call") {
+		logUsage(t, *first.usage)
+	}
+
+	second, err := collectStream(t, service, ctx, params, provider)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, second.content)
+	t.Logf("[openai/gpt-5-mini stream] second call provider=%s", second.provider)
+	if assert.NotNil(t, second.usage, "expected usage on second stream call") {
+		logUsage(t, *second.usage)
+	}
+
+	if first.usage == nil || second.usage == nil {
+		return
+	}
+	assert.Greater(t, second.usage.PromptTokensDetails.CachedTokens, int64(0),
+		"expected cache_read tokens on second OpenRouter->OpenAI stream call")
+	assert.Equal(t, int64(0), first.usage.PromptTokensDetails.CacheCreationTokens,
+		"OpenAI has no cache write tier")
+	assert.Equal(t, int64(0), second.usage.PromptTokensDetails.CacheCreationTokens,
+		"OpenAI has no cache write tier")
 }
 
 func TestUsage_OpenAI_Direct(t *testing.T) {
