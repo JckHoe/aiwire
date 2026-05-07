@@ -14,6 +14,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const (
+	openrouterURL = "https://openrouter.ai/api/v1"
+	openaiURL     = "https://api.openai.com/v1"
+	openrouterKey = "OPENROUTER_API_KEY"
+	openaiKey     = "OPENAI_API_KEY"
+)
+
+var (
+	anthropicOnly = &ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false}
+	openaiOnly    = &ProviderOption{Order: []string{"openai"}, AllowFallbacks: false}
+	sortByLatency = &ProviderOption{Sort: "latency", AllowFallbacks: true}
+)
+
 // Anthropic requires >=1024 tokens to cache; the nonce forces a cold cache per run.
 func buildLongSystemPrompt() string {
 	var b strings.Builder
@@ -33,109 +46,6 @@ func systemMessageWithCacheControl(text string) openai.ChatCompletionMessagePara
 		"cache_control": map[string]any{"type": "ephemeral"},
 	})
 	return openai.SystemMessage([]openai.ChatCompletionContentPartTextParam{part})
-}
-
-func runUsageCacheTestWithProvider(t *testing.T, model string, provider *ProviderOption, expectCacheWrite bool) {
-	t.Helper()
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
-	system := buildLongSystemPrompt()
-	messages := []openai.ChatCompletionMessageParamUnion{
-		systemMessageWithCacheControl(system),
-		openai.UserMessage("Reply with the single word: hello."),
-	}
-
-	opts := CompletionOption{
-		Model:       model,
-		Temperature: 0.0,
-		Provider:    provider,
-	}
-
-	ctx := context.Background()
-
-	first, err := service.Completions(ctx, messages, nil, opts)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, first.Message.Content)
-	t.Logf("[%s] first call provider=%s", model, first.Provider)
-	logUsage(t, first.Usage)
-
-	second, err := service.Completions(ctx, messages, nil, opts)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, second.Message.Content)
-	t.Logf("[%s] second call provider=%s", model, second.Provider)
-	logUsage(t, second.Usage)
-
-	if expectCacheWrite {
-		assert.Greater(t, first.Usage.PromptTokensDetails.CacheCreationTokens, int64(0),
-			"expected cache_write tokens on first call for %s", model)
-	}
-	assert.Greater(t, second.Usage.PromptTokensDetails.CachedTokens, int64(0),
-		"expected cache_read tokens on second call for %s", model)
-}
-
-func TestUsage_OpenRouter_AnthropicSonnet46(t *testing.T) {
-	runUsageCacheTestWithProvider(t, "anthropic/claude-sonnet-4.6", &ProviderOption{
-		Order:          []string{"anthropic"},
-		AllowFallbacks: false,
-	}, true)
-}
-
-func TestUsage_OpenRouter_KimiK25(t *testing.T) {
-	runUsageCacheTestWithProvider(t, "moonshotai/kimi-k2.5", &ProviderOption{
-		Sort:           "latency",
-		AllowFallbacks: true,
-	}, false)
-}
-
-func TestUsage_OpenRouter_GLM47(t *testing.T) {
-	runUsageCacheTestWithProvider(t, "z-ai/glm-4.7", &ProviderOption{
-		Sort:           "latency",
-		AllowFallbacks: true,
-	}, false)
-}
-
-func TestUsage_OpenRouter_OpenAIGPT5Mini(t *testing.T) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
-	system := buildLongSystemPrompt()
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(system),
-		openai.UserMessage("Reply with the single word: hello."),
-	}
-
-	opts := CompletionOption{
-		Model:       "openai/gpt-5-mini",
-		Temperature: 0.0,
-		Provider: &ProviderOption{
-			Order:          []string{"openai"},
-			AllowFallbacks: false,
-		},
-	}
-
-	ctx := context.Background()
-
-	first, err := service.Completions(ctx, messages, nil, opts)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, first.Message.Content)
-	t.Logf("[openai/gpt-5-mini] first call provider=%s", first.Provider)
-	logUsage(t, first.Usage)
-
-	second, err := service.Completions(ctx, messages, nil, opts)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, second.Message.Content)
-	t.Logf("[openai/gpt-5-mini] second call provider=%s", second.Provider)
-	logUsage(t, second.Usage)
-
-	assert.Greater(t, second.Usage.PromptTokensDetails.CachedTokens, int64(0),
-		"expected cache_read tokens on second OpenRouter->OpenAI call")
-	assert.Equal(t, int64(0), first.Usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-	assert.Equal(t, int64(0), second.Usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
 }
 
 type streamResult struct {
@@ -161,215 +71,176 @@ func collectStream(t *testing.T, service *Service, ctx context.Context, params o
 	return result, err
 }
 
-func runUsageCacheStreamTestWithProvider(t *testing.T, model string, provider *ProviderOption, expectCacheWrite bool) {
+type usageCase struct {
+	baseURL          string
+	apiKeyEnv        string
+	model            string
+	provider         *ProviderOption
+	useCacheControl  bool
+	expectCacheWrite bool // first call must report cache_write > 0
+	forbidCacheWrite bool // both calls must report cache_write == 0
+	expectZeroCost   bool // first.Cost must be 0 (OpenAI direct)
+}
+
+func (c usageCase) messages() []openai.ChatCompletionMessageParamUnion {
+	system := buildLongSystemPrompt()
+	sys := openai.SystemMessage(system)
+	if c.useCacheControl {
+		sys = systemMessageWithCacheControl(system)
+	}
+	return []openai.ChatCompletionMessageParamUnion{
+		sys,
+		openai.UserMessage("Reply with the single word: hello."),
+	}
+}
+
+func (c usageCase) checkUsage(t *testing.T, first, second Usage) {
 	t.Helper()
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
+	if c.expectCacheWrite {
+		assert.Greater(t, first.PromptTokensDetails.CacheCreationTokens, int64(0),
+			"expected cache_write tokens on first call for %s", c.model)
+	}
+	if c.forbidCacheWrite {
+		assert.Equal(t, int64(0), first.PromptTokensDetails.CacheCreationTokens,
+			"unexpected cache_write on first call for %s", c.model)
+		assert.Equal(t, int64(0), second.PromptTokensDetails.CacheCreationTokens,
+			"unexpected cache_write on second call for %s", c.model)
+	}
+	assert.Greater(t, second.PromptTokensDetails.CachedTokens, int64(0),
+		"expected cache_read tokens on second call for %s", c.model)
+	if c.expectZeroCost {
+		assert.Equal(t, float64(0), first.Cost, "expected zero cost for %s", c.model)
+	}
+}
+
+func (c usageCase) run(t *testing.T) {
+	t.Helper()
+	apiKey := os.Getenv(c.apiKeyEnv)
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
-	system := buildLongSystemPrompt()
-	messages := []openai.ChatCompletionMessageParamUnion{
-		systemMessageWithCacheControl(system),
-		openai.UserMessage("Reply with the single word: hello."),
-	}
-
-	params := openai.ChatCompletionNewParams{
-		Messages:    messages,
-		Model:       model,
-		Temperature: openai.Float(0.0),
-		StreamOptions: openai.ChatCompletionStreamOptionsParam{
-			IncludeUsage: openai.Bool(true),
-		},
-	}
-
-	ctx := context.Background()
-
-	first, err := collectStream(t, service, ctx, params, provider)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, first.content)
-	t.Logf("[%s stream] first call provider=%s", model, first.provider)
-	if assert.NotNil(t, first.usage, "expected usage on first stream call for %s", model) {
-		logUsage(t, *first.usage)
-	}
-
-	second, err := collectStream(t, service, ctx, params, provider)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, second.content)
-	t.Logf("[%s stream] second call provider=%s", model, second.provider)
-	if assert.NotNil(t, second.usage, "expected usage on second stream call for %s", model) {
-		logUsage(t, *second.usage)
-	}
-
-	if expectCacheWrite && first.usage != nil {
-		assert.Greater(t, first.usage.PromptTokensDetails.CacheCreationTokens, int64(0),
-			"expected cache_write tokens on first stream call for %s", model)
-	}
-	if second.usage != nil {
-		assert.Greater(t, second.usage.PromptTokensDetails.CachedTokens, int64(0),
-			"expected cache_read tokens on second stream call for %s", model)
-	}
-}
-
-func TestUsage_OpenRouter_AnthropicSonnet46_Stream(t *testing.T) {
-	runUsageCacheStreamTestWithProvider(t, "anthropic/claude-sonnet-4.6", &ProviderOption{
-		Order:          []string{"anthropic"},
-		AllowFallbacks: false,
-	}, true)
-}
-
-func TestUsage_OpenRouter_KimiK25_Stream(t *testing.T) {
-	runUsageCacheStreamTestWithProvider(t, "moonshotai/kimi-k2.5", &ProviderOption{
-		Sort:           "latency",
-		AllowFallbacks: true,
-	}, false)
-}
-
-func TestUsage_OpenRouter_GLM47_Stream(t *testing.T) {
-	runUsageCacheStreamTestWithProvider(t, "z-ai/glm-4.7", &ProviderOption{
-		Sort:           "latency",
-		AllowFallbacks: true,
-	}, false)
-}
-
-func TestUsage_OpenRouter_OpenAIGPT5Mini_Stream(t *testing.T) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
-	system := buildLongSystemPrompt()
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(system),
-		openai.UserMessage("Reply with the single word: hello."),
-	}
-
-	params := openai.ChatCompletionNewParams{
-		Messages:    messages,
-		Model:       "openai/gpt-5-mini",
-		Temperature: openai.Float(0.0),
-		StreamOptions: openai.ChatCompletionStreamOptionsParam{
-			IncludeUsage: openai.Bool(true),
-		},
-	}
-
-	provider := &ProviderOption{
-		Order:          []string{"openai"},
-		AllowFallbacks: false,
-	}
-
-	ctx := context.Background()
-
-	first, err := collectStream(t, service, ctx, params, provider)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, first.content)
-	t.Logf("[openai/gpt-5-mini stream] first call provider=%s", first.provider)
-	if assert.NotNil(t, first.usage, "expected usage on first stream call") {
-		logUsage(t, *first.usage)
-	}
-
-	second, err := collectStream(t, service, ctx, params, provider)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, second.content)
-	t.Logf("[openai/gpt-5-mini stream] second call provider=%s", second.provider)
-	if assert.NotNil(t, second.usage, "expected usage on second stream call") {
-		logUsage(t, *second.usage)
-	}
-
-	if first.usage == nil || second.usage == nil {
-		return
-	}
-	assert.Greater(t, second.usage.PromptTokensDetails.CachedTokens, int64(0),
-		"expected cache_read tokens on second OpenRouter->OpenAI stream call")
-	assert.Equal(t, int64(0), first.usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-	assert.Equal(t, int64(0), second.usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-}
-
-func TestUsage_OpenAI_Direct(t *testing.T) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := NewOpenAIService(apiKey, "https://api.openai.com/v1")
-	system := buildLongSystemPrompt()
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(system),
-		openai.UserMessage("Reply with the single word: hello."),
-	}
-
-	opts := CompletionOption{
-		Model:       "gpt-5.4-mini",
-		Temperature: 0.0,
-	}
-
+	service := NewOpenAIService(apiKey, c.baseURL)
+	messages := c.messages()
+	opts := CompletionOption{Model: c.model, Temperature: 0.0, Provider: c.provider}
 	ctx := context.Background()
 
 	first, err := service.Completions(ctx, messages, nil, opts)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, first.Message.Content)
-	t.Logf("[openai/gpt-4.1-mini] first call")
+	t.Logf("[%s] first call provider=%s", c.model, first.Provider)
 	logUsage(t, first.Usage)
 
 	second, err := service.Completions(ctx, messages, nil, opts)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, second.Message.Content)
-	t.Logf("[openai/gpt-4.1-mini] second call")
+	t.Logf("[%s] second call provider=%s", c.model, second.Provider)
 	logUsage(t, second.Usage)
 
-	assert.Greater(t, second.Usage.PromptTokensDetails.CachedTokens, int64(0),
-		"expected cache_read tokens on second OpenAI call")
-	assert.Equal(t, int64(0), first.Usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-	assert.Equal(t, int64(0), second.Usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-	assert.Equal(t, float64(0), first.Usage.Cost, "OpenAI direct does not return cost")
+	c.checkUsage(t, first.Usage, second.Usage)
 }
 
-func TestUsage_OpenAI_Direct_Stream(t *testing.T) {
-	apiKey := os.Getenv("OPENAI_API_KEY")
+func (c usageCase) runStream(t *testing.T) {
+	t.Helper()
+	apiKey := os.Getenv(c.apiKeyEnv)
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, "https://api.openai.com/v1")
-	system := buildLongSystemPrompt()
-	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.SystemMessage(system),
-		openai.UserMessage("Reply with the single word: hello."),
-	}
-
+	service := NewOpenAIService(apiKey, c.baseURL)
 	params := openai.ChatCompletionNewParams{
-		Messages:    messages,
-		Model:       "gpt-5.4-mini",
+		Messages:    c.messages(),
+		Model:       c.model,
 		Temperature: openai.Float(0.0),
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{
 			IncludeUsage: openai.Bool(true),
 		},
 	}
-
 	ctx := context.Background()
 
-	first, err := collectStream(t, service, ctx, params, nil)
+	first, err := collectStream(t, service, ctx, params, c.provider)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, first.content)
-	t.Logf("[openai/gpt-4.1-mini stream] first call")
-	if assert.NotNil(t, first.usage, "expected usage on first stream call") {
-		logUsage(t, *first.usage)
-	}
-
-	second, err := collectStream(t, service, ctx, params, nil)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, second.content)
-	t.Logf("[openai/gpt-4.1-mini stream] second call")
-	if assert.NotNil(t, second.usage, "expected usage on second stream call") {
-		logUsage(t, *second.usage)
-	}
-
-	if first.usage == nil || second.usage == nil {
+	t.Logf("[%s stream] first call provider=%s", c.model, first.provider)
+	if !assert.NotNil(t, first.usage, "expected usage on first stream call for %s", c.model) {
 		return
 	}
-	assert.Greater(t, second.usage.PromptTokensDetails.CachedTokens, int64(0),
-		"expected cache_read tokens on second OpenAI stream call")
-	assert.Equal(t, int64(0), first.usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-	assert.Equal(t, int64(0), second.usage.PromptTokensDetails.CacheCreationTokens,
-		"OpenAI has no cache write tier")
-	assert.Equal(t, float64(0), first.usage.Cost, "OpenAI direct does not return cost")
+	logUsage(t, *first.usage)
+
+	second, err := collectStream(t, service, ctx, params, c.provider)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, second.content)
+	t.Logf("[%s stream] second call provider=%s", c.model, second.provider)
+	if !assert.NotNil(t, second.usage, "expected usage on second stream call for %s", c.model) {
+		return
+	}
+	logUsage(t, *second.usage)
+
+	c.checkUsage(t, *first.usage, *second.usage)
+}
+
+func openrouterCase(model string, provider *ProviderOption) usageCase {
+	return usageCase{
+		baseURL:         openrouterURL,
+		apiKeyEnv:       openrouterKey,
+		model:           model,
+		provider:        provider,
+		useCacheControl: true,
+	}
+}
+
+func TestUsage_OpenRouter_AnthropicSonnet46(t *testing.T) {
+	c := openrouterCase("anthropic/claude-sonnet-4.6", anthropicOnly)
+	c.expectCacheWrite = true
+	c.run(t)
+}
+
+func TestUsage_OpenRouter_AnthropicSonnet46_Stream(t *testing.T) {
+	c := openrouterCase("anthropic/claude-sonnet-4.6", anthropicOnly)
+	c.expectCacheWrite = true
+	c.runStream(t)
+}
+
+func TestUsage_OpenRouter_KimiK25(t *testing.T) {
+	openrouterCase("moonshotai/kimi-k2.5", sortByLatency).run(t)
+}
+
+func TestUsage_OpenRouter_KimiK25_Stream(t *testing.T) {
+	openrouterCase("moonshotai/kimi-k2.5", sortByLatency).runStream(t)
+}
+
+func TestUsage_OpenRouter_GLM47(t *testing.T) {
+	openrouterCase("z-ai/glm-4.7", sortByLatency).run(t)
+}
+
+func TestUsage_OpenRouter_GLM47_Stream(t *testing.T) {
+	openrouterCase("z-ai/glm-4.7", sortByLatency).runStream(t)
+}
+
+func TestUsage_OpenRouter_OpenAIGPT5Mini(t *testing.T) {
+	c := openrouterCase("openai/gpt-5-mini", openaiOnly)
+	c.useCacheControl = false
+	c.forbidCacheWrite = true
+	c.run(t)
+}
+
+func TestUsage_OpenRouter_OpenAIGPT5Mini_Stream(t *testing.T) {
+	c := openrouterCase("openai/gpt-5-mini", openaiOnly)
+	c.useCacheControl = false
+	c.forbidCacheWrite = true
+	c.runStream(t)
+}
+
+func openaiDirectCase() usageCase {
+	return usageCase{
+		baseURL:          openaiURL,
+		apiKeyEnv:        openaiKey,
+		model:            "gpt-5.4-mini",
+		forbidCacheWrite: true,
+		expectZeroCost:   true,
+	}
+}
+
+func TestUsage_OpenAI_Direct(t *testing.T) {
+	openaiDirectCase().run(t)
+}
+
+func TestUsage_OpenAI_Direct_Stream(t *testing.T) {
+	openaiDirectCase().runStream(t)
 }
