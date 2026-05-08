@@ -40,13 +40,17 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 	assert.NotEmpty(t, apiKey)
 
 	type person struct {
-		Name string `json:"name" jsonschema:"required"`
-		Age  int    `json:"age" jsonschema:"required"`
+		Name       string   `json:"name" jsonschema:"required"`
+		Age        int      `json:"age" jsonschema:"required"`
+		Email      string   `json:"email" jsonschema:"required"`
+		City       string   `json:"city" jsonschema:"required"`
+		Occupation string   `json:"occupation" jsonschema:"required"`
+		Hobbies    []string `json:"hobbies" jsonschema:"required"`
 	}
 
 	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
-		openai.UserMessage("Return a person named Alice who is 30 years old."),
+		openai.UserMessage("Return a person named Alice who is 30 years old, email alice@example.com, lives in Paris, works as a software engineer, and enjoys hiking and painting."),
 	}
 
 	response, err := service.Completions(context.Background(), messages, nil, CompletionOption{
@@ -54,7 +58,7 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 		Temperature: 0.0,
 		Provider: &ProviderOption{
 			AllowFallbacks: true,
-			Sort:           "throughput",
+			Order:          []string{"parasail/fp8", "google-vertex", "cerebras/fp16"},
 		},
 		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONSchema: &shared.ResponseFormatJSONSchemaParam{
@@ -75,6 +79,10 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Alice", got.Name)
 	assert.Equal(t, 30, got.Age)
+	assert.Equal(t, "alice@example.com", got.Email)
+	assert.Equal(t, "Paris", got.City)
+	assert.NotEmpty(t, got.Occupation)
+	assert.NotEmpty(t, got.Hobbies)
 
 	t.Logf("Response: %s", response.Message.Content)
 	t.Logf("Provider: %s", response.Provider)
@@ -96,7 +104,7 @@ func TestOpenAI_ProviderIgnore_OpenRouter(t *testing.T) {
 		Provider: &ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "latency",
-			Ignore:          []string{"together"},
+			Ignore:         []string{"together"},
 		},
 	})
 
@@ -120,7 +128,7 @@ func TestOpenAI_ProviderOrder_OpenRouter(t *testing.T) {
 		Temperature: 0.7,
 		Provider: &ProviderOption{
 			AllowFallbacks: true,
-			Order:           []string{"moonshotai/int4"},
+			Order:          []string{"moonshotai/int4"},
 		},
 	})
 
