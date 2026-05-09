@@ -1,16 +1,17 @@
 //go:build openai || openrouter || zai || cerebras || usage
 
-package aiwire
+package integration
 
 import (
 	"context"
 	"testing"
 
+	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 )
 
-func logUsage(t *testing.T, u Usage) {
+func logUsage(t *testing.T, u aiwire.Usage) {
 	t.Helper()
 	t.Logf("Usage: prompt=%d (cache_read=%d, cache_write=%d) completion=%d (reasoning=%d) total=%d cost=%.6f discount=%.6f",
 		u.PromptTokens,
@@ -24,7 +25,7 @@ func logUsage(t *testing.T, u Usage) {
 	)
 }
 
-func runCompletionTest(t *testing.T, service *Service, messages []openai.ChatCompletionMessageParamUnion, opts CompletionOption) {
+func runCompletionTest(t *testing.T, service *aiwire.Service, messages []openai.ChatCompletionMessageParamUnion, opts aiwire.CompletionOption) {
 	t.Helper()
 	ctx := context.Background()
 	response, err := service.Completions(ctx, messages, nil, opts)
@@ -37,13 +38,13 @@ func runCompletionTest(t *testing.T, service *Service, messages []openai.ChatCom
 	logUsage(t, response.Usage)
 }
 
-func runStreamingTest(t *testing.T, service *Service, messages []openai.ChatCompletionMessageParamUnion, opts CompletionOption) {
+func runStreamingTest(t *testing.T, service *aiwire.Service, messages []openai.ChatCompletionMessageParamUnion, opts aiwire.CompletionOption) {
 	t.Helper()
 	ctx := context.Background()
 	var fullContent string
 	var chunkCount int
 
-	err := service.CompletionsStream(ctx, messages, nil, opts, func(chunk StreamChunk) error {
+	err := service.CompletionsStream(ctx, messages, nil, opts, func(chunk aiwire.StreamChunk) error {
 		chunkCount++
 		if chunk.Done {
 			t.Logf("Stream finished after %d chunks", chunkCount)

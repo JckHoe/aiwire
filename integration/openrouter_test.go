@@ -1,6 +1,6 @@
 //go:build openrouter
 
-package aiwire
+package integration
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/stretchr/testify/assert"
@@ -17,20 +18,20 @@ func TestOpenAI_Completion_OpenRouter(t *testing.T) {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
 
-	runCompletionTest(t, service, messages, CompletionOption{
+	runCompletionTest(t, service, messages, aiwire.CompletionOption{
 		Model:       "z-ai/glm-4.7",
 		Temperature: 0.7,
-		Provider: &ProviderOption{
+		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "throughput",
 		},
-		Reasoning: &ReasoningOption{
-			Effort: ReasoningEffortLow,
+		Reasoning: &aiwire.ReasoningOption{
+			Effort: aiwire.ReasoningEffortLow,
 		},
 	})
 }
@@ -48,15 +49,15 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 		Hobbies    []string `json:"hobbies" jsonschema:"required"`
 	}
 
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Return a person named Alice who is 30 years old, email alice@example.com, lives in Paris, works as a software engineer, and enjoys hiking and painting."),
 	}
 
-	response, err := service.Completions(context.Background(), messages, nil, CompletionOption{
+	response, err := service.Completions(context.Background(), messages, nil, aiwire.CompletionOption{
 		Model:       "z-ai/glm-4.7",
 		Temperature: 0.0,
-		Provider: &ProviderOption{
+		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Order:          []string{"parasail/fp8", "google-vertex", "cerebras/fp16"},
 		},
@@ -65,7 +66,7 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 				JSONSchema: shared.ResponseFormatJSONSchemaJSONSchemaParam{
 					Name:   "person",
 					Strict: openai.Bool(true),
-					Schema: GenerateSchema[person](),
+					Schema: aiwire.GenerateSchema[person](),
 				},
 			},
 		},
@@ -93,15 +94,15 @@ func TestOpenAI_ProviderIgnore_OpenRouter(t *testing.T) {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
 
-	response, err := service.Completions(context.Background(), messages, nil, CompletionOption{
+	response, err := service.Completions(context.Background(), messages, nil, aiwire.CompletionOption{
 		Model:       "moonshotai/kimi-k2.6",
 		Temperature: 0.7,
-		Provider: &ProviderOption{
+		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "latency",
 			Ignore:         []string{"together"},
@@ -118,15 +119,15 @@ func TestOpenAI_ProviderOrder_OpenRouter(t *testing.T) {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
 
-	response, err := service.Completions(context.Background(), messages, nil, CompletionOption{
+	response, err := service.Completions(context.Background(), messages, nil, aiwire.CompletionOption{
 		Model:       "moonshotai/kimi-k2.6",
 		Temperature: 0.7,
-		Provider: &ProviderOption{
+		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Order:          []string{"moonshotai/int4"},
 		},
@@ -142,20 +143,20 @@ func TestOpenAI_Streaming_OpenRouter(t *testing.T) {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}
 
-	runStreamingTest(t, service, messages, CompletionOption{
+	runStreamingTest(t, service, messages, aiwire.CompletionOption{
 		Model:       "z-ai/glm-4.7",
 		Temperature: 0.7,
-		Provider: &ProviderOption{
+		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "throughput",
 		},
-		Reasoning: &ReasoningOption{
-			Effort: ReasoningEffortLow,
+		Reasoning: &aiwire.ReasoningOption{
+			Effort: aiwire.ReasoningEffortLow,
 		},
 	})
 }

@@ -1,6 +1,6 @@
 //go:build usage
 
-package aiwire
+package integration
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,9 +23,9 @@ const (
 )
 
 var (
-	anthropicOnly = &ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false}
-	openaiOnly    = &ProviderOption{Order: []string{"openai"}, AllowFallbacks: false}
-	sortByLatency = &ProviderOption{Sort: "latency", AllowFallbacks: true}
+	anthropicOnly = &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false}
+	openaiOnly    = &aiwire.ProviderOption{Order: []string{"openai"}, AllowFallbacks: false}
+	sortByLatency = &aiwire.ProviderOption{Sort: "latency", AllowFallbacks: true}
 )
 
 // Anthropic requires >=1024 tokens to cache; the nonce forces a cold cache per run.
@@ -51,13 +52,13 @@ func systemMessageWithCacheControl(text string) openai.ChatCompletionMessagePara
 type streamResult struct {
 	content  string
 	provider string
-	usage    *Usage
+	usage    *aiwire.Usage
 }
 
-func collectStream(t *testing.T, service *Service, ctx context.Context, params openai.ChatCompletionNewParams, provider *ProviderOption) (streamResult, error) {
+func collectStream(t *testing.T, service *aiwire.Service, ctx context.Context, params openai.ChatCompletionNewParams, provider *aiwire.ProviderOption) (streamResult, error) {
 	t.Helper()
 	var result streamResult
-	err := service.ParamsCompletionsStream(ctx, params, provider, nil, func(chunk StreamChunk) error {
+	err := service.ParamsCompletionsStream(ctx, params, provider, nil, func(chunk aiwire.StreamChunk) error {
 		if chunk.Provider != "" {
 			result.provider = chunk.Provider
 		}
@@ -75,7 +76,7 @@ type usageCase struct {
 	baseURL          string
 	apiKeyEnv        string
 	model            string
-	provider         *ProviderOption
+	provider         *aiwire.ProviderOption
 	useCacheControl  bool
 	expectCacheWrite bool // first call must report cache_write > 0
 	forbidCacheWrite bool // both calls must report cache_write == 0
@@ -94,7 +95,7 @@ func (c usageCase) messages() []openai.ChatCompletionMessageParamUnion {
 	}
 }
 
-func (c usageCase) checkUsage(t *testing.T, first, second Usage) {
+func (c usageCase) checkUsage(t *testing.T, first, second aiwire.Usage) {
 	t.Helper()
 	if c.expectCacheWrite {
 		assert.Greater(t, first.PromptTokensDetails.CacheCreationTokens, int64(0),
@@ -118,9 +119,9 @@ func (c usageCase) run(t *testing.T) {
 	apiKey := os.Getenv(c.apiKeyEnv)
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, c.baseURL)
+	service := aiwire.NewOpenAIService(apiKey, c.baseURL)
 	messages := c.messages()
-	opts := CompletionOption{Model: c.model, Temperature: 0.0, Provider: c.provider}
+	opts := aiwire.CompletionOption{Model: c.model, Temperature: 0.0, Provider: c.provider}
 	ctx := context.Background()
 
 	first, err := service.Completions(ctx, messages, nil, opts)
@@ -143,7 +144,7 @@ func (c usageCase) runStream(t *testing.T) {
 	apiKey := os.Getenv(c.apiKeyEnv)
 	assert.NotEmpty(t, apiKey)
 
-	service := NewOpenAIService(apiKey, c.baseURL)
+	service := aiwire.NewOpenAIService(apiKey, c.baseURL)
 	params := openai.ChatCompletionNewParams{
 		Messages:    c.messages(),
 		Model:       c.model,
@@ -175,7 +176,7 @@ func (c usageCase) runStream(t *testing.T) {
 	c.checkUsage(t, *first.usage, *second.usage)
 }
 
-func openrouterCase(model string, provider *ProviderOption) usageCase {
+func openrouterCase(model string, provider *aiwire.ProviderOption) usageCase {
 	return usageCase{
 		baseURL:         openrouterURL,
 		apiKeyEnv:       openrouterKey,
