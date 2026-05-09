@@ -1,4 +1,4 @@
-//go:build zai
+//go:build integration
 
 package integration
 
@@ -8,14 +8,19 @@ import (
 
 	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
-	"github.com/stretchr/testify/assert"
 )
 
-func TestZAI_Completion(t *testing.T) {
+func zaiKeyOrSkip(t *testing.T) string {
+	t.Helper()
 	apiKey := os.Getenv("ZAI_API_KEY")
-	assert.NotEmpty(t, apiKey)
+	if apiKey == "" {
+		t.Skip("ZAI_API_KEY not set")
+	}
+	return apiKey
+}
 
-	service := aiwire.NewOpenAIService(apiKey, "https://api.z.ai/api/paas/v4")
+func TestZAI_Completion(t *testing.T) {
+	service := aiwire.NewOpenAIService(zaiKeyOrSkip(t), "https://api.z.ai/api/paas/v4")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -27,10 +32,7 @@ func TestZAI_Completion(t *testing.T) {
 }
 
 func TestZAI_Streaming(t *testing.T) {
-	apiKey := os.Getenv("ZAI_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := aiwire.NewOpenAIService(apiKey, "https://api.z.ai/api/paas/v4")
+	service := aiwire.NewOpenAIService(zaiKeyOrSkip(t), "https://api.z.ai/api/paas/v4")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}

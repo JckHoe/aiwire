@@ -1,4 +1,4 @@
-//go:build openrouter
+//go:build integration
 
 package integration
 
@@ -14,11 +14,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestOpenAI_Completion_OpenRouter(t *testing.T) {
+func openrouterKeyOrSkip(t *testing.T) string {
+	t.Helper()
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
+	if apiKey == "" {
+		t.Skip("OPENROUTER_API_KEY not set")
+	}
+	return apiKey
+}
 
-	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+func TestOpenRouter_Completion(t *testing.T) {
+	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -36,10 +42,7 @@ func TestOpenAI_Completion_OpenRouter(t *testing.T) {
 	})
 }
 
-func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
+func TestOpenRouter_ResponseFormat(t *testing.T) {
 	type person struct {
 		Name       string   `json:"name" jsonschema:"required"`
 		Age        int      `json:"age" jsonschema:"required"`
@@ -49,7 +52,7 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 		Hobbies    []string `json:"hobbies" jsonschema:"required"`
 	}
 
-	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Return a person named Alice who is 30 years old, email alice@example.com, lives in Paris, works as a software engineer, and enjoys hiking and painting."),
 	}
@@ -90,11 +93,8 @@ func TestOpenAI_ResponseFormat_OpenRouter(t *testing.T) {
 	logUsage(t, response.Usage)
 }
 
-func TestOpenAI_ProviderIgnore_OpenRouter(t *testing.T) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+func TestOpenRouter_ProviderIgnore(t *testing.T) {
+	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -115,11 +115,8 @@ func TestOpenAI_ProviderIgnore_OpenRouter(t *testing.T) {
 	t.Logf("Routed provider: %s", response.Provider)
 }
 
-func TestOpenAI_ProviderOrder_OpenRouter(t *testing.T) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+func TestOpenRouter_ProviderOrder(t *testing.T) {
+	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -139,11 +136,8 @@ func TestOpenAI_ProviderOrder_OpenRouter(t *testing.T) {
 	t.Logf("Routed provider: %s", response.Provider)
 }
 
-func TestOpenAI_Streaming_OpenRouter(t *testing.T) {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+func TestOpenRouter_Streaming(t *testing.T) {
+	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}

@@ -1,4 +1,4 @@
-//go:build openai || openrouter || zai || cerebras || usage
+//go:build integration
 
 package integration
 

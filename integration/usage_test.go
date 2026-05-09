@@ -1,4 +1,4 @@
-//go:build usage
+//go:build integration
 
 package integration
 
@@ -117,7 +117,9 @@ func (c usageCase) checkUsage(t *testing.T, first, second aiwire.Usage) {
 func (c usageCase) run(t *testing.T) {
 	t.Helper()
 	apiKey := os.Getenv(c.apiKeyEnv)
-	assert.NotEmpty(t, apiKey)
+	if apiKey == "" {
+		t.Skipf("%s not set", c.apiKeyEnv)
+	}
 
 	service := aiwire.NewOpenAIService(apiKey, c.baseURL)
 	messages := c.messages()
@@ -142,7 +144,9 @@ func (c usageCase) run(t *testing.T) {
 func (c usageCase) runStream(t *testing.T) {
 	t.Helper()
 	apiKey := os.Getenv(c.apiKeyEnv)
-	assert.NotEmpty(t, apiKey)
+	if apiKey == "" {
+		t.Skipf("%s not set", c.apiKeyEnv)
+	}
 
 	service := aiwire.NewOpenAIService(apiKey, c.baseURL)
 	params := openai.ChatCompletionNewParams{

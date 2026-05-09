@@ -1,11 +1,10 @@
-//go:build openrouter
+//go:build integration
 
 package integration
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
@@ -38,10 +37,7 @@ func (t *addTool) Execute(ctx context.Context, inputs map[string]any) (aiwire.To
 }
 
 func newTestAgent(t *testing.T) *aiwire.Agent {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := aiwire.NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
 	return aiwire.NewAgent(service, 5)
 }
 
@@ -59,7 +55,7 @@ func testCompletionOption() aiwire.CompletionOption {
 	}
 }
 
-func TestAgent_Execute_OpenRouter(t *testing.T) {
+func TestAgent_Execute(t *testing.T) {
 	agent := newTestAgent(t)
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
@@ -75,7 +71,7 @@ func TestAgent_Execute_OpenRouter(t *testing.T) {
 	logUsage(t, result.Usage)
 }
 
-func TestAgent_Execute_ToolCall_OpenRouter(t *testing.T) {
+func TestAgent_Execute_ToolCall(t *testing.T) {
 	agent := newTestAgent(t)
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage("You must use the add tool to answer any arithmetic question."),
@@ -105,7 +101,7 @@ func TestAgent_Execute_ToolCall_OpenRouter(t *testing.T) {
 	logUsage(t, result.Usage)
 }
 
-func TestAgent_ExecuteStream_OpenRouter(t *testing.T) {
+func TestAgent_ExecuteStream(t *testing.T) {
 	agent := newTestAgent(t)
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
