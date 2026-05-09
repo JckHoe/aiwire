@@ -1,4 +1,4 @@
-//go:build openai || openrouter || zai || usage
+//go:build openai || openrouter || zai || cerebras || usage
 
 package aiwire
 
