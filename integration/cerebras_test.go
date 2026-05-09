@@ -3,24 +3,14 @@
 package integration
 
 import (
-	"os"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 )
 
-func cerebrasKeyOrSkip(t *testing.T) string {
-	t.Helper()
-	apiKey := os.Getenv("CEREBRAS_API_KEY")
-	if apiKey == "" {
-		t.Skip("CEREBRAS_API_KEY not set")
-	}
-	return apiKey
-}
-
 func TestCerebras_Completion(t *testing.T) {
-	service := aiwire.NewOpenAIService(cerebrasKeyOrSkip(t), "https://api.cerebras.ai/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "CEREBRAS_API_KEY"), "https://api.cerebras.ai/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -32,7 +22,7 @@ func TestCerebras_Completion(t *testing.T) {
 }
 
 func TestCerebras_Streaming(t *testing.T) {
-	service := aiwire.NewOpenAIService(cerebrasKeyOrSkip(t), "https://api.cerebras.ai/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "CEREBRAS_API_KEY"), "https://api.cerebras.ai/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}

@@ -3,24 +3,14 @@
 package integration
 
 import (
-	"os"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 )
 
-func zaiKeyOrSkip(t *testing.T) string {
-	t.Helper()
-	apiKey := os.Getenv("ZAI_API_KEY")
-	if apiKey == "" {
-		t.Skip("ZAI_API_KEY not set")
-	}
-	return apiKey
-}
-
 func TestZAI_Completion(t *testing.T) {
-	service := aiwire.NewOpenAIService(zaiKeyOrSkip(t), "https://api.z.ai/api/paas/v4")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "ZAI_API_KEY"), "https://api.z.ai/api/paas/v4")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -32,7 +22,7 @@ func TestZAI_Completion(t *testing.T) {
 }
 
 func TestZAI_Streaming(t *testing.T) {
-	service := aiwire.NewOpenAIService(zaiKeyOrSkip(t), "https://api.z.ai/api/paas/v4")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "ZAI_API_KEY"), "https://api.z.ai/api/paas/v4")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}

@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -116,12 +115,7 @@ func (c usageCase) checkUsage(t *testing.T, first, second aiwire.Usage) {
 
 func (c usageCase) run(t *testing.T) {
 	t.Helper()
-	apiKey := os.Getenv(c.apiKeyEnv)
-	if apiKey == "" {
-		t.Skipf("%s not set", c.apiKeyEnv)
-	}
-
-	service := aiwire.NewOpenAIService(apiKey, c.baseURL)
+	service := aiwire.NewOpenAIService(keyOrSkip(t, c.apiKeyEnv), c.baseURL)
 	messages := c.messages()
 	opts := aiwire.CompletionOption{Model: c.model, Temperature: 0.0, Provider: c.provider}
 	ctx := context.Background()
@@ -143,12 +137,7 @@ func (c usageCase) run(t *testing.T) {
 
 func (c usageCase) runStream(t *testing.T) {
 	t.Helper()
-	apiKey := os.Getenv(c.apiKeyEnv)
-	if apiKey == "" {
-		t.Skipf("%s not set", c.apiKeyEnv)
-	}
-
-	service := aiwire.NewOpenAIService(apiKey, c.baseURL)
+	service := aiwire.NewOpenAIService(keyOrSkip(t, c.apiKeyEnv), c.baseURL)
 	params := openai.ChatCompletionNewParams{
 		Messages:    c.messages(),
 		Model:       c.model,

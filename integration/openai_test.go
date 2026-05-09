@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"os"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
@@ -11,17 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func openaiKeyOrSkip(t *testing.T) string {
-	t.Helper()
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		t.Skip("OPENAI_API_KEY not set")
-	}
-	return apiKey
-}
-
 func TestOpenAI_Completion(t *testing.T) {
-	service := aiwire.NewOpenAIService(openaiKeyOrSkip(t), "https://api.openai.com/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENAI_API_KEY"), "https://api.openai.com/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -33,7 +23,7 @@ func TestOpenAI_Completion(t *testing.T) {
 }
 
 func TestOpenAI_Embedding(t *testing.T) {
-	service := aiwire.NewOpenAIService(openaiKeyOrSkip(t), "https://api.openai.com/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENAI_API_KEY"), "https://api.openai.com/v1")
 
 	embedding, err := service.Embedding(t.Context(), "Hello, world!", "text-embedding-3-small")
 	assert.NoError(t, err)
@@ -42,7 +32,7 @@ func TestOpenAI_Embedding(t *testing.T) {
 }
 
 func TestOpenAI_Streaming(t *testing.T) {
-	service := aiwire.NewOpenAIService(openaiKeyOrSkip(t), "https://api.openai.com/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENAI_API_KEY"), "https://api.openai.com/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}

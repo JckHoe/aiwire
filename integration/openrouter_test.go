@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
@@ -14,17 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func openrouterKeyOrSkip(t *testing.T) string {
-	t.Helper()
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	if apiKey == "" {
-		t.Skip("OPENROUTER_API_KEY not set")
-	}
-	return apiKey
-}
-
 func TestOpenRouter_Completion(t *testing.T) {
-	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -52,7 +42,7 @@ func TestOpenRouter_ResponseFormat(t *testing.T) {
 		Hobbies    []string `json:"hobbies" jsonschema:"required"`
 	}
 
-	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Return a person named Alice who is 30 years old, email alice@example.com, lives in Paris, works as a software engineer, and enjoys hiking and painting."),
 	}
@@ -94,7 +84,7 @@ func TestOpenRouter_ResponseFormat(t *testing.T) {
 }
 
 func TestOpenRouter_ProviderIgnore(t *testing.T) {
-	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -116,7 +106,7 @@ func TestOpenRouter_ProviderIgnore(t *testing.T) {
 }
 
 func TestOpenRouter_ProviderOrder(t *testing.T) {
-	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
 	}
@@ -137,7 +127,7 @@ func TestOpenRouter_ProviderOrder(t *testing.T) {
 }
 
 func TestOpenRouter_Streaming(t *testing.T) {
-	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
 	}

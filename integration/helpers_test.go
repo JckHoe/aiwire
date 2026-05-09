@@ -4,12 +4,22 @@ package integration
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 	"github.com/stretchr/testify/assert"
 )
+
+func keyOrSkip(t *testing.T, envVar string) string {
+	t.Helper()
+	apiKey := os.Getenv(envVar)
+	if apiKey == "" {
+		t.Skipf("%s not set", envVar)
+	}
+	return apiKey
+}
 
 func logUsage(t *testing.T, u aiwire.Usage) {
 	t.Helper()

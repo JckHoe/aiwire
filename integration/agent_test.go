@@ -37,7 +37,7 @@ func (t *addTool) Execute(ctx context.Context, inputs map[string]any) (aiwire.To
 }
 
 func newTestAgent(t *testing.T) *aiwire.Agent {
-	service := aiwire.NewOpenAIService(openrouterKeyOrSkip(t), "https://openrouter.ai/api/v1")
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	return aiwire.NewAgent(service, 5)
 }
 
