@@ -1,13 +1,13 @@
-//go:build openrouter
+//go:build integration
 
-package aiwire
+package integration
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
+	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/stretchr/testify/assert"
@@ -20,45 +20,42 @@ type addInput struct {
 
 type addTool struct{}
 
-var _ Tool = (*addTool)(nil)
+var _ aiwire.Tool = (*addTool)(nil)
 
 func (t *addTool) Definition() openai.ChatCompletionToolUnionParam {
 	return openai.ChatCompletionFunctionTool(shared.FunctionDefinitionParam{
 		Name:        "add",
 		Description: openai.String("Add two integers"),
-		Parameters:  GenerateFunctionParameters[addInput](),
+		Parameters:  aiwire.GenerateFunctionParameters[addInput](),
 	})
 }
 
-func (t *addTool) Execute(ctx context.Context, inputs map[string]any) (ToolResult, error) {
+func (t *addTool) Execute(ctx context.Context, inputs map[string]any) (aiwire.ToolResult, error) {
 	a := inputs["a"].(float64)
 	b := inputs["b"].(float64)
-	return &SimpleToolResult{ToolContent: fmt.Sprintf("%d", int(a)+int(b))}, nil
+	return &aiwire.SimpleToolResult{ToolContent: fmt.Sprintf("%d", int(a)+int(b))}, nil
 }
 
-func newTestAgent(t *testing.T) *Agent {
-	apiKey := os.Getenv("OPENROUTER_API_KEY")
-	assert.NotEmpty(t, apiKey)
-
-	service := NewOpenAIService(apiKey, "https://openrouter.ai/api/v1")
-	return NewAgent(service, 5)
+func newTestAgent(t *testing.T) *aiwire.Agent {
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
+	return aiwire.NewAgent(service, 5)
 }
 
-func testCompletionOption() CompletionOption {
-	return CompletionOption{
+func testCompletionOption() aiwire.CompletionOption {
+	return aiwire.CompletionOption{
 		Model:       "moonshotai/kimi-k2.5",
 		Temperature: 0.7,
-		Provider: &ProviderOption{
+		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "throughput",
 		},
-		Reasoning: &ReasoningOption{
-			Effort: ReasoningEffortLow,
+		Reasoning: &aiwire.ReasoningOption{
+			Effort: aiwire.ReasoningEffortLow,
 		},
 	}
 }
 
-func TestAgent_Execute_OpenRouter(t *testing.T) {
+func TestAgent_Execute(t *testing.T) {
 	agent := newTestAgent(t)
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a joke?"),
@@ -74,19 +71,19 @@ func TestAgent_Execute_OpenRouter(t *testing.T) {
 	logUsage(t, result.Usage)
 }
 
-func TestAgent_Execute_ToolCall_OpenRouter(t *testing.T) {
+func TestAgent_Execute_ToolCall(t *testing.T) {
 	agent := newTestAgent(t)
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.SystemMessage("You must use the add tool to answer any arithmetic question."),
 		openai.UserMessage("What is 17 + 28?"),
 	}
 
-	var preCalls []PreTool
-	var postCalls []PostTool
-	result, err := agent.Execute(context.Background(), messages, []Tool{&addTool{}},
+	var preCalls []aiwire.PreTool
+	var postCalls []aiwire.PostTool
+	result, err := agent.Execute(context.Background(), messages, []aiwire.Tool{&addTool{}},
 		testCompletionOption(),
-		func(p PreTool) { preCalls = append(preCalls, p) },
-		func(p PostTool) { postCalls = append(postCalls, p) },
+		func(p aiwire.PreTool) { preCalls = append(preCalls, p) },
+		func(p aiwire.PostTool) { postCalls = append(postCalls, p) },
 	)
 
 	assert.NoError(t, err)
@@ -104,7 +101,7 @@ func TestAgent_Execute_ToolCall_OpenRouter(t *testing.T) {
 	logUsage(t, result.Usage)
 }
 
-func TestAgent_ExecuteStream_OpenRouter(t *testing.T) {
+func TestAgent_ExecuteStream(t *testing.T) {
 	agent := newTestAgent(t)
 	messages := []openai.ChatCompletionMessageParamUnion{
 		openai.UserMessage("Hello, can you tell me a short joke?"),
@@ -114,7 +111,7 @@ func TestAgent_ExecuteStream_OpenRouter(t *testing.T) {
 	var chunkCount int
 
 	result, err := agent.ExecuteStream(context.Background(), messages, nil, testCompletionOption(),
-		func(chunk StreamChunk) error {
+		func(chunk aiwire.StreamChunk) error {
 			chunkCount++
 			if chunk.Done {
 				t.Logf("Stream finished after %d chunks", chunkCount)
