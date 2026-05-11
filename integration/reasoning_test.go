@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
@@ -11,12 +12,30 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func rawHasNonEmptyString(raw json.RawMessage, key string) bool {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return false
+	}
+	v, ok := m[key]
+	if !ok {
+		return false
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return false
+	}
+	return s != ""
+}
+
 type reasoningCase struct {
 	model    string
 	provider *aiwire.ProviderOption
 	summary  string
 	// gpt-5 toggles between summary and encrypted-only modes; only reasoning_tokens is stable.
 	unreliableReasoningText bool
+	// Anthropic signs reasoning blocks; follow-up turns fail without the signature.
+	requiresSignature bool
 }
 
 func (c reasoningCase) opts(effort aiwire.ReasoningEffort, exclude bool) aiwire.CompletionOption {
@@ -124,7 +143,11 @@ func runReasoningDetailsBasic(t *testing.T, c reasoningCase) {
 	for i, d := range response.ReasoningDetails {
 		assert.NotEmpty(t, d.Type, "detail %d missing type", i)
 		assert.NotEmpty(t, d.Raw, "detail %d missing raw bytes for replay", i)
-		t.Logf("detail[%d] type=%s id=%s text_len=%d data_len=%d", i, d.Type, d.ID, len(d.Text), len(d.Data))
+		if c.requiresSignature && d.Type == "reasoning.text" {
+			assert.True(t, rawHasNonEmptyString(d.Raw, "signature"),
+				"detail %d missing signature for replay: %s", i, d.Raw)
+		}
+		t.Logf("detail[%d] type=%s raw_len=%d", i, d.Type, len(d.Raw))
 	}
 }
 
@@ -148,6 +171,10 @@ func runReasoningDetailsStream(t *testing.T, c reasoningCase) {
 	for i, d := range finalDetails {
 		assert.NotEmpty(t, d.Type, "merged detail %d missing type", i)
 		assert.NotEmpty(t, d.Raw, "merged detail %d missing raw bytes", i)
+		if c.requiresSignature && d.Type == "reasoning.text" {
+			assert.True(t, rawHasNonEmptyString(d.Raw, "signature"),
+				"merged detail %d lost signature in finalize: %s", i, d.Raw)
+		}
 	}
 	t.Logf("sawFragmentDuringStream=%v finalDetails=%d", sawFragment, len(finalDetails))
 }
@@ -163,15 +190,17 @@ func runReasoningSuite(t *testing.T, c reasoningCase) {
 
 func TestReasoning_OpenRouter_Sonnet46(t *testing.T) {
 	runReasoningSuite(t, reasoningCase{
-		model:    "anthropic/claude-sonnet-4.6",
-		provider: &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false},
+		model:             "anthropic/claude-sonnet-4.6",
+		provider:          &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false},
+		requiresSignature: true,
 	})
 }
 
 func TestReasoning_OpenRouter_Opus46(t *testing.T) {
 	runReasoningSuite(t, reasoningCase{
-		model:    "anthropic/claude-opus-4.6",
-		provider: &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false},
+		model:             "anthropic/claude-opus-4.6",
+		provider:          &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false},
+		requiresSignature: true,
 	})
 }
 

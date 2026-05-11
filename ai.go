@@ -103,17 +103,11 @@ type StreamChunk struct {
 }
 
 // ReasoningDetail is one entry of OpenRouter's reasoning_details array.
-// Raw preserves the original wire bytes so unknown future fields round-trip
-// on replay; if Raw is empty MarshalJSON falls back to the typed fields.
-// Caveat: under streaming, fragments are merged from typed fields and Raw is
-// regenerated at finalize, so only known fields survive the round-trip.
+// Raw is the verbatim wire bytes — Type/Index are surfaced for filtering
+// and slot keying; everything else lives in Raw and round-trips opaquely.
 type ReasoningDetail struct {
-	Type   string `json:"type,omitempty"`
-	Text   string `json:"text,omitempty"`
-	Data   string `json:"data,omitempty"`
-	Format string `json:"format,omitempty"`
-	ID     string `json:"id,omitempty"`
-	Index  int    `json:"index,omitempty"`
+	Type  string `json:"type,omitempty"`
+	Index int    `json:"index,omitempty"`
 
 	Raw json.RawMessage `json:"-"`
 }
