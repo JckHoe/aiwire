@@ -37,6 +37,7 @@ type ReasoningOption struct {
 	Effort    ReasoningEffort
 	MaxTokens *int
 	Exclude   bool
+	Summary   string // OpenAI gpt-5 reasoning summary verbosity: "auto" | "concise" | "detailed"
 }
 
 type ProviderDataCollection string
