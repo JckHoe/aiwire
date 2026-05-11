@@ -149,9 +149,28 @@ func extractReasoningDetails(extraFields map[string]respjson.Field) []ReasoningD
 	return out
 }
 
+func rawHasIndex(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return false
+	}
+	_, ok := probe["index"]
+	return ok
+}
+
 func mergeReasoningDetailFragments(acc map[int]*ReasoningDetail, order *[]int, fragments []ReasoningDetail) {
 	for _, frag := range fragments {
-		idx := frag.Index
+		// If the wire payload omitted "index", assign a unique negative slot so
+		// distinct indexless details don't collapse into one entry.
+		var idx int
+		if len(frag.Raw) > 0 && !rawHasIndex(frag.Raw) {
+			idx = -(len(*order) + 1)
+		} else {
+			idx = frag.Index
+		}
 		existing, ok := acc[idx]
 		if !ok {
 			copy := frag
@@ -169,7 +188,11 @@ func mergeReasoningDetailFragments(acc map[int]*ReasoningDetail, order *[]int, f
 			existing.ID = frag.ID
 		}
 		existing.Text += frag.Text
-		existing.Data += frag.Data
+		// Data is treated as last-write-wins: encrypted blobs arrive whole, not
+		// in concat-able chunks, so appending two complete blobs would corrupt.
+		if frag.Data != "" {
+			existing.Data = frag.Data
+		}
 		if len(frag.Raw) > 0 {
 			existing.Raw = append(json.RawMessage(nil), frag.Raw...)
 		}

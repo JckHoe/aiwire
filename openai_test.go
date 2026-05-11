@@ -121,12 +121,11 @@ func TestMergeReasoningDetailFragments_AccumulatesByIndex(t *testing.T) {
 	if out[0].Text != "step one" || out[0].Type != "reasoning.summary" {
 		t.Fatalf("idx0 not merged: %+v", out[0])
 	}
-	if out[1].Data != "abcdef" || out[1].Type != "reasoning.encrypted" {
-		t.Fatalf("idx1 not merged: %+v", out[1])
+	if out[1].Data != "def" || out[1].Type != "reasoning.encrypted" {
+		t.Fatalf("idx1 should last-write-wins on Data: %+v", out[1])
 	}
-	// Raw should be regenerated from merged fields, not last fragment only
-	if !strings.Contains(string(out[1].Raw), "abcdef") {
-		t.Fatalf("raw should reflect merged data: %s", out[1].Raw)
+	if !strings.Contains(string(out[1].Raw), "def") {
+		t.Fatalf("raw should reflect merged fields: %s", out[1].Raw)
 	}
 }
 
