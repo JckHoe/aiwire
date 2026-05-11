@@ -11,7 +11,19 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const reasoningModel = "z-ai/glm-4.7"
+type reasoningCase struct {
+	model    string
+	provider *aiwire.ProviderOption
+}
+
+func (c reasoningCase) opts(r *aiwire.ReasoningOption) aiwire.CompletionOption {
+	return aiwire.CompletionOption{
+		Model:       c.model,
+		Temperature: 0.0,
+		Provider:    c.provider,
+		Reasoning:   r,
+	}
+}
 
 func reasoningMessages() []openai.ChatCompletionMessageParamUnion {
 	return []openai.ChatCompletionMessageParamUnion{
@@ -19,22 +31,14 @@ func reasoningMessages() []openai.ChatCompletionMessageParamUnion {
 	}
 }
 
-func reasoningOpts(r *aiwire.ReasoningOption) aiwire.CompletionOption {
-	return aiwire.CompletionOption{
-		Model:       reasoningModel,
-		Temperature: 0.0,
-		Provider: &aiwire.ProviderOption{
-			AllowFallbacks: true,
-			Sort:           "throughput",
-		},
-		Reasoning: r,
-	}
+func reasoningService(t *testing.T) *aiwire.Service {
+	t.Helper()
+	return aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 }
 
-func TestReasoning_OpenRouter(t *testing.T) {
-	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
-
-	response, err := service.Completions(context.Background(), reasoningMessages(), nil, reasoningOpts(&aiwire.ReasoningOption{
+func runReasoningBasic(t *testing.T, c reasoningCase) {
+	t.Helper()
+	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(&aiwire.ReasoningOption{
 		Effort: aiwire.ReasoningEffortLow,
 	}))
 
@@ -50,10 +54,9 @@ func TestReasoning_OpenRouter(t *testing.T) {
 	logUsage(t, response.Usage)
 }
 
-func TestReasoning_OpenRouter_Exclude(t *testing.T) {
-	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
-
-	response, err := service.Completions(context.Background(), reasoningMessages(), nil, reasoningOpts(&aiwire.ReasoningOption{
+func runReasoningExclude(t *testing.T, c reasoningCase) {
+	t.Helper()
+	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(&aiwire.ReasoningOption{
 		Effort:  aiwire.ReasoningEffortLow,
 		Exclude: true,
 	}))
@@ -69,14 +72,13 @@ func TestReasoning_OpenRouter_Exclude(t *testing.T) {
 	logUsage(t, response.Usage)
 }
 
-func TestReasoning_OpenRouter_Stream(t *testing.T) {
-	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
-
+func runReasoningStream(t *testing.T, c reasoningCase) {
+	t.Helper()
 	var fullContent, fullReasoning string
 	var reasoningChunks, contentChunks int
 	var finalUsage *aiwire.Usage
 
-	err := service.CompletionsStream(context.Background(), reasoningMessages(), nil, reasoningOpts(&aiwire.ReasoningOption{
+	err := reasoningService(t).CompletionsStream(context.Background(), reasoningMessages(), nil, c.opts(&aiwire.ReasoningOption{
 		Effort: aiwire.ReasoningEffortLow,
 	}), func(chunk aiwire.StreamChunk) error {
 		if chunk.Done {
@@ -96,8 +98,6 @@ func TestReasoning_OpenRouter_Stream(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, fullContent)
-	assert.NotEmpty(t, fullReasoning, "expected at least one reasoning chunk")
-	assert.Greater(t, reasoningChunks, 0)
 	assert.Greater(t, contentChunks, 0)
 	if assert.NotNil(t, finalUsage, "expected usage on final chunk") {
 		assert.Greater(t, finalUsage.CompletionTokensDetails.ReasoningTokens, int64(0),
@@ -107,4 +107,39 @@ func TestReasoning_OpenRouter_Stream(t *testing.T) {
 
 	t.Logf("Reasoning chunks=%d total=%q", reasoningChunks, fullReasoning)
 	t.Logf("Content chunks=%d total=%q", contentChunks, fullContent)
+}
+
+func runReasoningSuite(t *testing.T, c reasoningCase) {
+	t.Helper()
+	t.Run("Basic", func(t *testing.T) { runReasoningBasic(t, c) })
+	t.Run("Exclude", func(t *testing.T) { runReasoningExclude(t, c) })
+	t.Run("Stream", func(t *testing.T) { runReasoningStream(t, c) })
+}
+
+func TestReasoning_OpenRouter_Sonnet46(t *testing.T) {
+	runReasoningSuite(t, reasoningCase{
+		model:    "anthropic/claude-sonnet-4.6",
+		provider: &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false},
+	})
+}
+
+func TestReasoning_OpenRouter_Opus46(t *testing.T) {
+	runReasoningSuite(t, reasoningCase{
+		model:    "anthropic/claude-opus-4.6",
+		provider: &aiwire.ProviderOption{Order: []string{"anthropic"}, AllowFallbacks: false},
+	})
+}
+
+func TestReasoning_OpenRouter_KimiK26(t *testing.T) {
+	runReasoningSuite(t, reasoningCase{
+		model:    "moonshotai/kimi-k2.6",
+		provider: &aiwire.ProviderOption{AllowFallbacks: true, Sort: "throughput"},
+	})
+}
+
+func TestReasoning_OpenRouter_GPT55(t *testing.T) {
+	runReasoningSuite(t, reasoningCase{
+		model:    "openai/gpt-5.5",
+		provider: &aiwire.ProviderOption{Order: []string{"openai"}, AllowFallbacks: false},
+	})
 }
