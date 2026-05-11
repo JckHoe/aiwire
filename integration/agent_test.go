@@ -139,3 +139,38 @@ func TestAgent_ExecuteStream(t *testing.T) {
 	t.Logf("Provider: %s", result.Provider)
 	logUsage(t, result.Usage)
 }
+
+// effort:high + chained tool calls reliably produces encrypted reasoning on
+// every step; without replay the follow-up call drops it and (sometimes)
+// errors. NoError + reasoning_tokens>0 proves round-trip works.
+func TestAgent_Execute_ReasoningReplay_GPT55(t *testing.T) {
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
+	agent := aiwire.NewAgent(service, 5)
+
+	option := aiwire.CompletionOption{
+		Model:       "openai/gpt-5.5",
+		Temperature: 0.0,
+		Provider:    &aiwire.ProviderOption{Order: []string{"openai"}, AllowFallbacks: false},
+		Reasoning: &aiwire.ReasoningOption{
+			Effort:  aiwire.ReasoningEffortHigh,
+			Summary: "detailed",
+		},
+	}
+
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.SystemMessage("You can only add two numbers at a time using the add tool. To compute longer sums, call add multiple times."),
+		openai.UserMessage("Use the add tool to compute the sum 11 + 22 + 33 + 44. Show your work with separate add calls and report only the final number."),
+	}
+
+	result, err := agent.Execute(context.Background(), messages, []aiwire.Tool{&addTool{}}, option, nil, nil)
+
+	assert.NoError(t, err)
+	assert.GreaterOrEqual(t, len(result.ToolCalls), 2, "expected multiple tool calls (chained add)")
+	assert.Contains(t, result.Content, "110")
+	assert.Greater(t, result.Usage.CompletionTokensDetails.ReasoningTokens, int64(0),
+		"expected reasoning tokens to be produced over multi-step run")
+
+	t.Logf("Content: %s", result.Content)
+	t.Logf("Provider: %s", result.Provider)
+	logUsage(t, result.Usage)
+}

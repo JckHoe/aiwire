@@ -82,22 +82,48 @@ type CompletionTokensDetails struct {
 }
 
 type CompletionResponse struct {
-	Message   openai.ChatCompletionMessage
-	Reasoning string
-	Provider  string
-	Usage     Usage
+	Message          openai.ChatCompletionMessage
+	Reasoning        string
+	ReasoningDetails []ReasoningDetail
+	Provider         string
+	Usage            Usage
 }
 
 type StreamChunk struct {
-	Content      string
-	Reasoning    string
-	Provider     string
-	Role         string
-	FinishReason string
-	Done         bool
-	Usage        *Usage
-	ToolCalls    []openai.ChatCompletionMessageToolCallUnion
-	ToolResults  []StreamToolResult
+	Content          string
+	Reasoning        string
+	ReasoningDetails []ReasoningDetail
+	Provider         string
+	Role             string
+	FinishReason     string
+	Done             bool
+	Usage            *Usage
+	ToolCalls        []openai.ChatCompletionMessageToolCallUnion
+	ToolResults      []StreamToolResult
+}
+
+// ReasoningDetail is one entry of OpenRouter's reasoning_details array.
+// Raw preserves the original wire bytes so unknown future fields round-trip
+// on replay; if Raw is empty MarshalJSON falls back to the typed fields.
+// Caveat: under streaming, fragments are merged from typed fields and Raw is
+// regenerated at finalize, so only known fields survive the round-trip.
+type ReasoningDetail struct {
+	Type   string `json:"type,omitempty"`
+	Text   string `json:"text,omitempty"`
+	Data   string `json:"data,omitempty"`
+	Format string `json:"format,omitempty"`
+	ID     string `json:"id,omitempty"`
+	Index  int    `json:"index,omitempty"`
+
+	Raw json.RawMessage `json:"-"`
+}
+
+func (r ReasoningDetail) MarshalJSON() ([]byte, error) {
+	if len(r.Raw) > 0 {
+		return r.Raw, nil
+	}
+	type alias ReasoningDetail
+	return json.Marshal(alias(r))
 }
 
 func UsageFromOpenAI(u openai.CompletionUsage) Usage {
@@ -198,6 +224,28 @@ type StreamToolResult struct {
 	Name    string
 	Content string
 	Error   error
+}
+
+// AssistantMessageWithReasoning builds an assistant message param with
+// reasoning_details attached for replay. Empty details yields a plain message.
+func AssistantMessageWithReasoning(
+	content string,
+	toolCalls []openai.ChatCompletionMessageToolCallUnion,
+	details []ReasoningDetail,
+) openai.ChatCompletionMessageParamUnion {
+	msg := openai.ChatCompletionMessage{
+		Role:      "assistant",
+		Content:   content,
+		ToolCalls: toolCalls,
+	}
+	if len(details) == 0 {
+		return msg.ToParam()
+	}
+	p := msg.ToAssistantMessageParam()
+	p.SetExtraFields(map[string]any{
+		"reasoning_details": details,
+	})
+	return openai.ChatCompletionMessageParamUnion{OfAssistant: &p}
 }
 
 type StreamCallback func(chunk StreamChunk) error
