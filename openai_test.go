@@ -21,39 +21,57 @@ func fieldsFromJSON(t *testing.T, raw string) map[string]respjson.Field {
 	return out
 }
 
-func TestExtractReasoningDetails_EncryptedBlock(t *testing.T) {
-	fields := fieldsFromJSON(t, `{
-		"reasoning_details": [
-			{"type":"reasoning.encrypted","data":"opaque-blob","format":"openai-responses-v1","id":"rs_1","index":0}
-		]
-	}`)
+func rawField(t *testing.T, m map[string]json.RawMessage, key string) string {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("key %q missing from %v", key, m)
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		t.Fatalf("key %q not a string: %v", key, err)
+	}
+	return s
+}
 
-	got := extractReasoningDetails(fields)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 detail, got %d", len(got))
+func rawAsMap(t *testing.T, raw json.RawMessage) map[string]json.RawMessage {
+	t.Helper()
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("raw not an object: %v", err)
 	}
-	d := got[0]
-	if d.Type != "reasoning.encrypted" || d.Data != "opaque-blob" || d.Format != "openai-responses-v1" || d.ID != "rs_1" {
-		t.Fatalf("typed fields not parsed: %+v", d)
+	return m
+}
+
+func detailFrom(t *testing.T, raw string) ReasoningDetail {
+	t.Helper()
+	d, ok := reasoningDetailFromRaw(json.RawMessage(raw))
+	if !ok {
+		t.Fatalf("invalid raw JSON: %s", raw)
 	}
-	if len(d.Raw) == 0 {
-		t.Fatalf("raw bytes should be preserved")
-	}
+	return d
 }
 
 func TestExtractReasoningDetails_SummaryAndEncryptedMix(t *testing.T) {
 	fields := fieldsFromJSON(t, `{
 		"reasoning_details": [
 			{"type":"reasoning.summary","text":"step one","index":0},
-			{"type":"reasoning.encrypted","data":"abc","index":1}
+			{"type":"reasoning.encrypted","data":"opaque-blob","format":"openai-responses-v1","id":"rs_1","index":1}
 		]
 	}`)
 	got := extractReasoningDetails(fields)
 	if len(got) != 2 {
 		t.Fatalf("expected 2, got %d", len(got))
 	}
-	if got[0].Text != "step one" || got[1].Data != "abc" {
-		t.Fatalf("unexpected parse: %+v", got)
+	if got[0].Type != "reasoning.summary" || rawField(t, rawAsMap(t, got[0].Raw), "text") != "step one" {
+		t.Fatalf("idx0 not parsed: %+v raw=%s", got[0], got[0].Raw)
+	}
+	m1 := rawAsMap(t, got[1].Raw)
+	if got[1].Type != "reasoning.encrypted" ||
+		rawField(t, m1, "data") != "opaque-blob" ||
+		rawField(t, m1, "format") != "openai-responses-v1" ||
+		rawField(t, m1, "id") != "rs_1" {
+		t.Fatalf("idx1 raw payload missing fields: %s", got[1].Raw)
 	}
 }
 
@@ -87,45 +105,91 @@ func TestReasoningDetail_MarshalUsesRaw(t *testing.T) {
 	}
 }
 
-func TestReasoningDetail_MarshalFallsBackToFields(t *testing.T) {
-	d := ReasoningDetail{Type: "reasoning.summary", Text: "hi"}
+func TestReasoningDetail_MarshalFallsBackToTypedFieldsWhenRawEmpty(t *testing.T) {
+	d := ReasoningDetail{Type: "reasoning.summary"}
 	bytes, err := json.Marshal(d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `{"type":"reasoning.summary","text":"hi"}`
+	want := `{"type":"reasoning.summary","index":0}`
 	if string(bytes) != want {
 		t.Fatalf("got %s want %s", bytes, want)
 	}
 }
 
 func TestMergeReasoningDetailFragments_AccumulatesByIndex(t *testing.T) {
-	acc := make(map[int]*ReasoningDetail)
-	var order []int
+	var acc reasoningAccum
 
-	mergeReasoningDetailFragments(acc, &order, []ReasoningDetail{
-		{Type: "reasoning.summary", Text: "step ", Index: 0},
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"type":"reasoning.summary","text":"step ","index":0}`),
 	})
-	mergeReasoningDetailFragments(acc, &order, []ReasoningDetail{
-		{Text: "one", Index: 0},
-		{Type: "reasoning.encrypted", Data: "abc", Index: 1},
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"text":"one","index":0}`),
+		detailFrom(t, `{"type":"reasoning.encrypted","data":"abc","index":1}`),
 	})
-	mergeReasoningDetailFragments(acc, &order, []ReasoningDetail{
-		{Data: "def", Index: 1},
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"data":"def","index":1}`),
 	})
 
-	out := finalizeMergedReasoningDetails(acc, order)
+	out := acc.finalize()
 	if len(out) != 2 {
 		t.Fatalf("expected 2 details, got %d", len(out))
 	}
-	if out[0].Text != "step one" || out[0].Type != "reasoning.summary" {
-		t.Fatalf("idx0 not merged: %+v", out[0])
+	m0 := rawAsMap(t, out[0].Raw)
+	if rawField(t, m0, "text") != "step one" || out[0].Type != "reasoning.summary" {
+		t.Fatalf("idx0 not concatenated: %s", out[0].Raw)
 	}
-	if out[1].Data != "def" || out[1].Type != "reasoning.encrypted" {
-		t.Fatalf("idx1 should last-write-wins on Data: %+v", out[1])
+	m1 := rawAsMap(t, out[1].Raw)
+	if rawField(t, m1, "data") != "def" || out[1].Type != "reasoning.encrypted" {
+		t.Fatalf("idx1 should last-write-wins on data: %s", out[1].Raw)
 	}
-	if !strings.Contains(string(out[1].Raw), "def") {
-		t.Fatalf("raw should reflect merged fields: %s", out[1].Raw)
+}
+
+func TestMergeReasoningDetailFragments_PreservesSignatureAndUnknowns(t *testing.T) {
+	// Anthropic streams the signature on a trailing fragment after the text.
+	// Map-based merge should preserve it AND any other unknown wire field.
+	var acc reasoningAccum
+
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"type":"reasoning.text","text":"thinking ","index":0}`),
+	})
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"text":"more","index":0}`),
+	})
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"signature":"sig-abc123","format":"anthropic-claude-v1","unknown_future":"keep-me","index":0}`),
+	})
+
+	out := acc.finalize()
+	if len(out) != 1 {
+		t.Fatalf("expected 1 detail, got %d", len(out))
+	}
+	m := rawAsMap(t, out[0].Raw)
+	if rawField(t, m, "text") != "thinking more" {
+		t.Fatalf("text not concat: %s", out[0].Raw)
+	}
+	if rawField(t, m, "signature") != "sig-abc123" {
+		t.Fatalf("signature lost: %s", out[0].Raw)
+	}
+	if rawField(t, m, "format") != "anthropic-claude-v1" {
+		t.Fatalf("format lost: %s", out[0].Raw)
+	}
+	if rawField(t, m, "unknown_future") != "keep-me" {
+		t.Fatalf("unknown field dropped: %s", out[0].Raw)
+	}
+}
+
+func TestMergeReasoningDetailFragments_IndexlessFragmentsGetSyntheticSlots(t *testing.T) {
+	var acc reasoningAccum
+
+	acc.merge([]ReasoningDetail{
+		detailFrom(t, `{"type":"reasoning.text","text":"first"}`),
+		detailFrom(t, `{"type":"reasoning.text","text":"second"}`),
+	})
+
+	out := acc.finalize()
+	if len(out) != 2 {
+		t.Fatalf("expected 2 distinct slots, got %d", len(out))
 	}
 }
 
@@ -142,7 +206,7 @@ func TestAssistantMessageWithReasoning_EmptyDetailsIsPlain(t *testing.T) {
 
 func TestAssistantMessageWithReasoning_AttachesDetails(t *testing.T) {
 	details := []ReasoningDetail{
-		{Type: "reasoning.encrypted", Data: "opaque", Format: "openai-responses-v1", ID: "rs_1"},
+		detailFrom(t, `{"type":"reasoning.encrypted","data":"opaque","format":"openai-responses-v1","id":"rs_1"}`),
 	}
 	msg := AssistantMessageWithReasoning("done", nil, details)
 	bytes, err := json.Marshal(msg)

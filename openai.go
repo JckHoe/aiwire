@@ -136,11 +136,10 @@ func extractReasoningDetails(extraFields map[string]respjson.Field) []ReasoningD
 	}
 	out := make([]ReasoningDetail, 0, len(rawItems))
 	for _, item := range rawItems {
-		var d ReasoningDetail
-		if err := json.Unmarshal(item, &d); err != nil {
+		d, ok := reasoningDetailFromRaw(item)
+		if !ok {
 			continue
 		}
-		d.Raw = append(json.RawMessage(nil), item...)
 		out = append(out, d)
 	}
 	if len(out) == 0 {
@@ -149,73 +148,117 @@ func extractReasoningDetails(extraFields map[string]respjson.Field) []ReasoningD
 	return out
 }
 
-func rawHasIndex(raw json.RawMessage) bool {
-	if len(raw) == 0 {
-		return false
+func reasoningDetailFromRaw(item json.RawMessage) (ReasoningDetail, bool) {
+	var probe struct {
+		Type  string `json:"type"`
+		Index int    `json:"index"`
 	}
-	var probe map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &probe); err != nil {
-		return false
+	if err := json.Unmarshal(item, &probe); err != nil {
+		return ReasoningDetail{}, false
 	}
-	_, ok := probe["index"]
-	return ok
+	return ReasoningDetail{
+		Type:  probe.Type,
+		Index: probe.Index,
+		Raw:   append(json.RawMessage(nil), item...),
+	}, true
 }
 
-func mergeReasoningDetailFragments(acc map[int]*ReasoningDetail, order *[]int, fragments []ReasoningDetail) {
+// jsonStringOrEmpty best-effort unmarshals a JSON string; returns "" if raw is
+// empty, malformed, or not a string. Used for opaque fields where we'd rather
+// drop the value than fail the whole detail.
+func jsonStringOrEmpty(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	_ = json.Unmarshal(raw, &s)
+	return s
+}
+
+// jsonIntOrZero is the int companion to jsonStringOrEmpty.
+func jsonIntOrZero(raw json.RawMessage) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var n int
+	_ = json.Unmarshal(raw, &n)
+	return n
+}
+
+// reasoningSlot is one accumulating reasoning_detail. `text` streams in
+// fragments and is appended through a Builder; everything else is opaque and
+// last-write-wins.
+type reasoningSlot struct {
+	fields map[string]json.RawMessage
+	text   strings.Builder
+}
+
+// reasoningAccum accumulates streamed reasoning_details fragments by index slot.
+// Unknown wire fields ride along in fields so they round-trip on replay.
+type reasoningAccum struct {
+	slots map[int]*reasoningSlot
+	order []int
+}
+
+func (a *reasoningAccum) merge(fragments []ReasoningDetail) {
 	for _, frag := range fragments {
-		var idx int
-		if len(frag.Raw) > 0 && !rawHasIndex(frag.Raw) {
-			idx = -(len(*order) + 1)
-		} else {
-			idx = frag.Index
-		}
-		existing, ok := acc[idx]
-		if !ok {
-			copy := frag
-			acc[idx] = &copy
-			*order = append(*order, idx)
+		if len(frag.Raw) == 0 {
 			continue
 		}
-		if frag.Type != "" {
-			existing.Type = frag.Type
+		var fragMap map[string]json.RawMessage
+		if err := json.Unmarshal(frag.Raw, &fragMap); err != nil {
+			continue
 		}
-		if frag.Format != "" {
-			existing.Format = frag.Format
+
+		idx := frag.Index
+		if _, hasIndex := fragMap["index"]; !hasIndex {
+			// Indexless fragments don't share a slot — give each a unique synthetic key.
+			idx = -(len(a.order) + 1)
 		}
-		if frag.ID != "" {
-			existing.ID = frag.ID
-		}
-		existing.Text += frag.Text
-		// encrypted blobs arrive whole; concatenating two complete blobs corrupts
-		if frag.Data != "" {
-			existing.Data = frag.Data
-		}
-		if len(frag.Raw) > 0 {
-			existing.Raw = append(json.RawMessage(nil), frag.Raw...)
+
+		slot := a.slot(idx)
+		for k, v := range fragMap {
+			if k == "text" {
+				slot.text.WriteString(jsonStringOrEmpty(v))
+			} else {
+				slot.fields[k] = v
+			}
 		}
 	}
 }
 
-// finalizeMergedReasoningDetails regenerates each Raw from the merged typed
-// fields so replay sends the full assembled object, not the last fragment.
-func finalizeMergedReasoningDetails(acc map[int]*ReasoningDetail, order []int) []ReasoningDetail {
-	if len(acc) == 0 {
+func (a *reasoningAccum) slot(idx int) *reasoningSlot {
+	if s, ok := a.slots[idx]; ok {
+		return s
+	}
+	if a.slots == nil {
+		a.slots = make(map[int]*reasoningSlot)
+	}
+	s := &reasoningSlot{fields: make(map[string]json.RawMessage)}
+	a.slots[idx] = s
+	a.order = append(a.order, idx)
+	return s
+}
+
+func (a *reasoningAccum) finalize() []ReasoningDetail {
+	if len(a.slots) == 0 {
 		return nil
 	}
-	out := make([]ReasoningDetail, 0, len(acc))
-	seen := make(map[int]bool, len(acc))
-	for _, idx := range order {
-		if seen[idx] {
+	out := make([]ReasoningDetail, 0, len(a.slots))
+	for _, idx := range a.order {
+		s := a.slots[idx]
+		if s.text.Len() > 0 {
+			s.fields["text"], _ = json.Marshal(s.text.String())
+		}
+		raw, err := json.Marshal(s.fields)
+		if err != nil {
 			continue
 		}
-		seen[idx] = true
-		d := *acc[idx]
-		d.Raw = nil
-		bytes, err := json.Marshal(d)
-		if err == nil {
-			d.Raw = bytes
-		}
-		out = append(out, d)
+		out = append(out, ReasoningDetail{
+			Type:  jsonStringOrEmpty(s.fields["type"]),
+			Index: jsonIntOrZero(s.fields["index"]),
+			Raw:   raw,
+		})
 	}
 	return out
 }
@@ -304,13 +347,11 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 	// Accumulate tool calls across chunks
 	toolCallsMap := make(map[int]*openai.ChatCompletionMessageToolCallUnion)
 
-	reasoningDetailsAcc := make(map[int]*ReasoningDetail)
-	var reasoningDetailsOrder []int
+	var reasoningDetails reasoningAccum
 
 	for stream.Next() {
 		chunk := stream.Current()
 
-		// Extract provider: check header once, then prefer body fields
 		if !headerChecked {
 			routedProvider = extractProviderFromHeader(response)
 			headerChecked = true
@@ -348,7 +389,7 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 
 		if fragments := extractReasoningDetails(delta.JSON.ExtraFields); len(fragments) > 0 {
 			streamChunk.ReasoningDetails = fragments
-			mergeReasoningDetailFragments(reasoningDetailsAcc, &reasoningDetailsOrder, fragments)
+			reasoningDetails.merge(fragments)
 		}
 
 		// Handle tool calls if present
@@ -399,7 +440,7 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 	finalChunk := StreamChunk{
 		Done:             true,
 		Provider:         routedProvider,
-		ReasoningDetails: finalizeMergedReasoningDetails(reasoningDetailsAcc, reasoningDetailsOrder),
+		ReasoningDetails: reasoningDetails.finalize(),
 	}
 	if hasFinalUsage {
 		finalChunk.Usage = &finalUsage

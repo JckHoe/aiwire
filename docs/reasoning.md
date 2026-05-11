@@ -28,9 +28,9 @@ Verified by integration tests against live providers, May 2026. "Replay" means a
 ## Why OpenRouter only
 
 OpenRouter normalises every upstream's reasoning payload into a single
-`reasoning_details: [{type, text, data, format, id, index}, ...]` array attached
-to the assistant message in `/chat/completions`. aiwire reads that array
-verbatim and re-attaches it on replay.
+`reasoning_details` array attached to the assistant message in
+`/chat/completions`. aiwire surfaces each detail's `type` and `index`, preserves
+the full raw JSON object, and re-attaches that raw payload on replay.
 
 Direct OpenAI exposes reasoning via:
 
@@ -47,13 +47,15 @@ For supported providers, every successful completion (streaming or not) populate
 
 - `CompletionResponse.Reasoning` — concatenated reasoning text (when the
   provider exposes it)
-- `CompletionResponse.ReasoningDetails` — structured array with raw wire bytes
-  preserved for verbatim replay
+- `CompletionResponse.ReasoningDetails` — details with `Type`, `Index`, and raw
+  wire bytes preserved for verbatim replay. Provider-specific fields such as
+  `text`, `data`, `format`, `id`, `signature`, and future fields live in `Raw`.
 - `Usage.CompletionTokensDetails.ReasoningTokens` — billed reasoning tokens
 
 For streaming, `StreamChunk.ReasoningDetails` carries fragments per chunk; the
-final `Done` chunk carries the merged result with `Raw` regenerated from the
-merged typed fields.
+final `Done` chunk carries the merged result. `text` fragments are concatenated;
+all other raw fields are last-write-wins so opaque blobs and signatures are not
+corrupted.
 
 ## Replay across the agent loop
 
@@ -65,13 +67,10 @@ follow-up calls).
 
 ## Known caveats
 
-- **Streaming Raw round-trip is best-effort for unknown fields.** Fragments are
-  merged from typed fields and `Raw` is regenerated at finalize. Unknown
-  future fields carried in fragment Raw are dropped. Non-streaming preserves
-  unknowns verbatim.
-- **`Data` is last-write-wins on merge.** Encrypted blobs arrive whole, not in
-  concat-able chunks; concatenating two complete blobs would corrupt them.
-  `Text` still concatenates as expected for streamed reasoning summaries.
+- **Provider-specific fields are raw-only.** Read `ReasoningDetail.Raw` if you
+  need `text`, `data`, `format`, `id`, `signature`, or future fields.
+- **Only `text` concatenates during streaming merge.** Encrypted blobs,
+  signatures, IDs, formats, and unknown fields are last-write-wins.
 - **Indexless fragments get a synthetic slot.** OpenRouter always sends
   `index`; if a provider ever omits it, distinct fragments won't collapse into
   one entry.
