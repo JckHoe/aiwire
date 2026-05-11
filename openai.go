@@ -163,8 +163,6 @@ func rawHasIndex(raw json.RawMessage) bool {
 
 func mergeReasoningDetailFragments(acc map[int]*ReasoningDetail, order *[]int, fragments []ReasoningDetail) {
 	for _, frag := range fragments {
-		// If the wire payload omitted "index", assign a unique negative slot so
-		// distinct indexless details don't collapse into one entry.
 		var idx int
 		if len(frag.Raw) > 0 && !rawHasIndex(frag.Raw) {
 			idx = -(len(*order) + 1)
@@ -188,8 +186,7 @@ func mergeReasoningDetailFragments(acc map[int]*ReasoningDetail, order *[]int, f
 			existing.ID = frag.ID
 		}
 		existing.Text += frag.Text
-		// Data is treated as last-write-wins: encrypted blobs arrive whole, not
-		// in concat-able chunks, so appending two complete blobs would corrupt.
+		// encrypted blobs arrive whole; concatenating two complete blobs corrupts
 		if frag.Data != "" {
 			existing.Data = frag.Data
 		}
