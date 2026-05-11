@@ -68,6 +68,9 @@ func buildRequestOptions(provider *ProviderOption, reasoning *ReasoningOption) [
 		if reasoning.Exclude {
 			reasoningMap["exclude"] = reasoning.Exclude
 		}
+		if reasoning.Summary != "" {
+			reasoningMap["summary"] = reasoning.Summary
+		}
 		opts = append(opts, option.WithJSONSet("reasoning", reasoningMap))
 	}
 

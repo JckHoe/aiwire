@@ -14,14 +14,22 @@ import (
 type reasoningCase struct {
 	model    string
 	provider *aiwire.ProviderOption
+	summary  string // optional reasoning.summary override (e.g. "detailed" for OpenAI gpt-5)
+	// unreliableReasoningText: provider returns reasoning text intermittently (e.g. OpenAI
+	// gpt-5 toggles between summary and encrypted-only modes); only reasoning_tokens is stable.
+	unreliableReasoningText bool
 }
 
-func (c reasoningCase) opts(r *aiwire.ReasoningOption) aiwire.CompletionOption {
+func (c reasoningCase) opts(effort aiwire.ReasoningEffort, exclude bool) aiwire.CompletionOption {
 	return aiwire.CompletionOption{
 		Model:       c.model,
 		Temperature: 0.0,
 		Provider:    c.provider,
-		Reasoning:   r,
+		Reasoning: &aiwire.ReasoningOption{
+			Effort:  effort,
+			Exclude: exclude,
+			Summary: c.summary,
+		},
 	}
 }
 
@@ -38,13 +46,13 @@ func reasoningService(t *testing.T) *aiwire.Service {
 
 func runReasoningBasic(t *testing.T, c reasoningCase) {
 	t.Helper()
-	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(&aiwire.ReasoningOption{
-		Effort: aiwire.ReasoningEffortLow,
-	}))
+	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(aiwire.ReasoningEffortLow, false))
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, response.Message.Content)
-	assert.NotEmpty(t, response.Reasoning, "expected reasoning content")
+	if !c.unreliableReasoningText {
+		assert.NotEmpty(t, response.Reasoning, "expected reasoning content")
+	}
 	assert.Greater(t, response.Usage.CompletionTokensDetails.ReasoningTokens, int64(0),
 		"expected reasoning tokens to be counted")
 
@@ -56,10 +64,7 @@ func runReasoningBasic(t *testing.T, c reasoningCase) {
 
 func runReasoningExclude(t *testing.T, c reasoningCase) {
 	t.Helper()
-	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(&aiwire.ReasoningOption{
-		Effort:  aiwire.ReasoningEffortLow,
-		Exclude: true,
-	}))
+	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(aiwire.ReasoningEffortLow, true))
 
 	assert.NoError(t, err)
 	assert.NotEmpty(t, response.Message.Content)
@@ -78,9 +83,7 @@ func runReasoningStream(t *testing.T, c reasoningCase) {
 	var reasoningChunks, contentChunks int
 	var finalUsage *aiwire.Usage
 
-	err := reasoningService(t).CompletionsStream(context.Background(), reasoningMessages(), nil, c.opts(&aiwire.ReasoningOption{
-		Effort: aiwire.ReasoningEffortLow,
-	}), func(chunk aiwire.StreamChunk) error {
+	err := reasoningService(t).CompletionsStream(context.Background(), reasoningMessages(), nil, c.opts(aiwire.ReasoningEffortLow, false), func(chunk aiwire.StreamChunk) error {
 		if chunk.Done {
 			finalUsage = chunk.Usage
 			return nil
@@ -99,6 +102,10 @@ func runReasoningStream(t *testing.T, c reasoningCase) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, fullContent)
 	assert.Greater(t, contentChunks, 0)
+	if !c.unreliableReasoningText {
+		assert.NotEmpty(t, fullReasoning, "expected at least one reasoning chunk")
+		assert.Greater(t, reasoningChunks, 0)
+	}
 	if assert.NotNil(t, finalUsage, "expected usage on final chunk") {
 		assert.Greater(t, finalUsage.CompletionTokensDetails.ReasoningTokens, int64(0),
 			"expected reasoning tokens to be counted")
@@ -139,7 +146,9 @@ func TestReasoning_OpenRouter_KimiK26(t *testing.T) {
 
 func TestReasoning_OpenRouter_GPT55(t *testing.T) {
 	runReasoningSuite(t, reasoningCase{
-		model:    "openai/gpt-5.5",
-		provider: &aiwire.ProviderOption{Order: []string{"openai"}, AllowFallbacks: false},
+		model:                   "openai/gpt-5.5",
+		provider:                &aiwire.ProviderOption{Order: []string{"openai"}, AllowFallbacks: false},
+		summary:                 "detailed", // raises summary-emission probability; not deterministic
+		unreliableReasoningText: true,
 	})
 }
