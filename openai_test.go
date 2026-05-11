@@ -52,43 +52,26 @@ func detailFrom(t *testing.T, raw string) ReasoningDetail {
 	return d
 }
 
-func TestExtractReasoningDetails_EncryptedBlock(t *testing.T) {
-	fields := fieldsFromJSON(t, `{
-		"reasoning_details": [
-			{"type":"reasoning.encrypted","data":"opaque-blob","format":"openai-responses-v1","id":"rs_1","index":0}
-		]
-	}`)
-
-	got := extractReasoningDetails(fields)
-	if len(got) != 1 {
-		t.Fatalf("expected 1 detail, got %d", len(got))
-	}
-	d := got[0]
-	if d.Type != "reasoning.encrypted" {
-		t.Fatalf("type not parsed: %+v", d)
-	}
-	m := rawAsMap(t, d.Raw)
-	if rawField(t, m, "data") != "opaque-blob" || rawField(t, m, "format") != "openai-responses-v1" || rawField(t, m, "id") != "rs_1" {
-		t.Fatalf("raw payload missing fields: %s", d.Raw)
-	}
-}
-
 func TestExtractReasoningDetails_SummaryAndEncryptedMix(t *testing.T) {
 	fields := fieldsFromJSON(t, `{
 		"reasoning_details": [
 			{"type":"reasoning.summary","text":"step one","index":0},
-			{"type":"reasoning.encrypted","data":"abc","index":1}
+			{"type":"reasoning.encrypted","data":"opaque-blob","format":"openai-responses-v1","id":"rs_1","index":1}
 		]
 	}`)
 	got := extractReasoningDetails(fields)
 	if len(got) != 2 {
 		t.Fatalf("expected 2, got %d", len(got))
 	}
-	if rawField(t, rawAsMap(t, got[0].Raw), "text") != "step one" {
-		t.Fatalf("idx0 text missing: %s", got[0].Raw)
+	if got[0].Type != "reasoning.summary" || rawField(t, rawAsMap(t, got[0].Raw), "text") != "step one" {
+		t.Fatalf("idx0 not parsed: %+v raw=%s", got[0], got[0].Raw)
 	}
-	if rawField(t, rawAsMap(t, got[1].Raw), "data") != "abc" {
-		t.Fatalf("idx1 data missing: %s", got[1].Raw)
+	m1 := rawAsMap(t, got[1].Raw)
+	if got[1].Type != "reasoning.encrypted" ||
+		rawField(t, m1, "data") != "opaque-blob" ||
+		rawField(t, m1, "format") != "openai-responses-v1" ||
+		rawField(t, m1, "id") != "rs_1" {
+		t.Fatalf("idx1 raw payload missing fields: %s", got[1].Raw)
 	}
 }
 
