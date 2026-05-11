@@ -13,6 +13,7 @@ A Go library for building AI agents with tool-calling support. Works with any Op
 - Pre/post tool callbacks for observability
 - Token usage tracking across multi-step interactions
 - Provider-agnostic via the `Completion` interface
+- Reasoning capture and replay across loop iterations (OpenRouter — see [docs/reasoning.md](docs/reasoning.md))
 
 ## Install
 
