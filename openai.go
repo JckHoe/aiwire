@@ -77,7 +77,7 @@ func buildRequestOptions(provider *ProviderOption, reasoning *ReasoningOption) [
 	return opts
 }
 
-func extractStringFromExtraFields(extraFields map[string]respjson.Field, keys ...string) string {
+func extractRawStringFromExtraFields(extraFields map[string]respjson.Field, keys ...string) string {
 	for _, key := range keys {
 		field, ok := extraFields[key]
 		if !ok {
@@ -93,13 +93,17 @@ func extractStringFromExtraFields(extraFields map[string]respjson.Field, keys ..
 		if err := json.Unmarshal([]byte(raw), &value); err != nil {
 			continue
 		}
-		value = strings.TrimSpace(value)
-		if value != "" {
-			return value
+		if value == "" {
+			continue
 		}
+		return value
 	}
 
 	return ""
+}
+
+func extractStringFromExtraFields(extraFields map[string]respjson.Field, keys ...string) string {
+	return strings.TrimSpace(extractRawStringFromExtraFields(extraFields, keys...))
 }
 
 func extractProviderFromHeader(response *http.Response) string {
@@ -233,7 +237,7 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 			streamChunk.Provider = routedProvider
 		}
 
-		streamChunk.Reasoning = extractReasoning(delta.JSON.ExtraFields)
+		streamChunk.Reasoning = extractRawStringFromExtraFields(delta.JSON.ExtraFields, "reasoning", "reasoning_content")
 
 		// Handle tool calls if present
 		if len(delta.ToolCalls) > 0 {
