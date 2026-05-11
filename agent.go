@@ -162,6 +162,7 @@ func (a *Agent) execute(
 		var stepProvider string
 		var stepToolCalls []openai.ChatCompletionMessageToolCallUnion
 		var stepUsage Usage
+		var stepReasoningDetails []ReasoningDetail
 
 		if streamCallback != nil {
 			err := a.aiService.CompletionsStream(
@@ -182,6 +183,9 @@ func (a *Agent) execute(
 					if chunk.Done && chunk.Usage != nil {
 						stepUsage = *chunk.Usage
 					}
+					if chunk.Done && len(chunk.ReasoningDetails) > 0 {
+						stepReasoningDetails = chunk.ReasoningDetails
+					}
 					// Don't forward Done for intermediate completions
 					if chunk.Done {
 						return nil
@@ -201,6 +205,7 @@ func (a *Agent) execute(
 			stepProvider = completion.Provider
 			stepToolCalls = completion.Message.ToolCalls
 			stepUsage = completion.Usage
+			stepReasoningDetails = completion.ReasoningDetails
 		}
 
 		totalUsage.Add(stepUsage)
@@ -208,12 +213,7 @@ func (a *Agent) execute(
 			responseProvider = stepProvider
 		}
 
-		assistantMessage := openai.ChatCompletionMessage{
-			Role:      "assistant",
-			Content:   stepContent,
-			ToolCalls: stepToolCalls,
-		}
-		messages = append(messages, assistantMessage.ToParam())
+		messages = append(messages, AssistantMessageWithReasoning(stepContent, stepToolCalls, stepReasoningDetails))
 
 		if len(stepToolCalls) == 0 {
 			if streamCallback != nil {

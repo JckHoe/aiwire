@@ -115,11 +115,50 @@ func runReasoningStream(t *testing.T, c reasoningCase) {
 	t.Logf("Content chunks=%d total=%q", contentChunks, fullContent)
 }
 
+func runReasoningDetailsBasic(t *testing.T, c reasoningCase) {
+	t.Helper()
+	response, err := reasoningService(t).Completions(context.Background(), reasoningMessages(), nil, c.opts(aiwire.ReasoningEffortLow, false))
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, response.ReasoningDetails, "expected structured reasoning_details to be captured")
+	for i, d := range response.ReasoningDetails {
+		assert.NotEmpty(t, d.Type, "detail %d missing type", i)
+		assert.NotEmpty(t, d.Raw, "detail %d missing raw bytes for replay", i)
+		t.Logf("detail[%d] type=%s id=%s text_len=%d data_len=%d", i, d.Type, d.ID, len(d.Text), len(d.Data))
+	}
+}
+
+func runReasoningDetailsStream(t *testing.T, c reasoningCase) {
+	t.Helper()
+	var finalDetails []aiwire.ReasoningDetail
+	var sawFragment bool
+
+	err := reasoningService(t).CompletionsStream(context.Background(), reasoningMessages(), nil, c.opts(aiwire.ReasoningEffortLow, false), func(chunk aiwire.StreamChunk) error {
+		if !chunk.Done && len(chunk.ReasoningDetails) > 0 {
+			sawFragment = true
+		}
+		if chunk.Done {
+			finalDetails = chunk.ReasoningDetails
+		}
+		return nil
+	})
+
+	assert.NoError(t, err)
+	assert.NotEmpty(t, finalDetails, "expected merged reasoning_details on final chunk")
+	for i, d := range finalDetails {
+		assert.NotEmpty(t, d.Type, "merged detail %d missing type", i)
+		assert.NotEmpty(t, d.Raw, "merged detail %d missing raw bytes", i)
+	}
+	t.Logf("sawFragmentDuringStream=%v finalDetails=%d", sawFragment, len(finalDetails))
+}
+
 func runReasoningSuite(t *testing.T, c reasoningCase) {
 	t.Helper()
 	t.Run("Basic", func(t *testing.T) { runReasoningBasic(t, c) })
 	t.Run("Exclude", func(t *testing.T) { runReasoningExclude(t, c) })
 	t.Run("Stream", func(t *testing.T) { runReasoningStream(t, c) })
+	t.Run("DetailsBasic", func(t *testing.T) { runReasoningDetailsBasic(t, c) })
+	t.Run("DetailsStream", func(t *testing.T) { runReasoningDetailsStream(t, c) })
 }
 
 func TestReasoning_OpenRouter_Sonnet46(t *testing.T) {

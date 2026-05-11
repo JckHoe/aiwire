@@ -118,6 +118,88 @@ func extractReasoning(extraFields map[string]respjson.Field) string {
 	return extractStringFromExtraFields(extraFields, "reasoning", "reasoning_content")
 }
 
+func extractReasoningDetails(extraFields map[string]respjson.Field) []ReasoningDetail {
+	field, ok := extraFields["reasoning_details"]
+	if !ok {
+		return nil
+	}
+	raw := strings.TrimSpace(field.Raw())
+	if raw == "" || raw == "null" {
+		return nil
+	}
+	var rawItems []json.RawMessage
+	if err := json.Unmarshal([]byte(raw), &rawItems); err != nil {
+		return nil
+	}
+	if len(rawItems) == 0 {
+		return nil
+	}
+	out := make([]ReasoningDetail, 0, len(rawItems))
+	for _, item := range rawItems {
+		var d ReasoningDetail
+		if err := json.Unmarshal(item, &d); err != nil {
+			continue
+		}
+		d.Raw = append(json.RawMessage(nil), item...)
+		out = append(out, d)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mergeReasoningDetailFragments(acc map[int]*ReasoningDetail, order *[]int, fragments []ReasoningDetail) {
+	for _, frag := range fragments {
+		idx := frag.Index
+		existing, ok := acc[idx]
+		if !ok {
+			copy := frag
+			acc[idx] = &copy
+			*order = append(*order, idx)
+			continue
+		}
+		if frag.Type != "" {
+			existing.Type = frag.Type
+		}
+		if frag.Format != "" {
+			existing.Format = frag.Format
+		}
+		if frag.ID != "" {
+			existing.ID = frag.ID
+		}
+		existing.Text += frag.Text
+		existing.Data += frag.Data
+		if len(frag.Raw) > 0 {
+			existing.Raw = append(json.RawMessage(nil), frag.Raw...)
+		}
+	}
+}
+
+// finalizeMergedReasoningDetails regenerates each Raw from the merged typed
+// fields so replay sends the full assembled object, not the last fragment.
+func finalizeMergedReasoningDetails(acc map[int]*ReasoningDetail, order []int) []ReasoningDetail {
+	if len(acc) == 0 {
+		return nil
+	}
+	out := make([]ReasoningDetail, 0, len(acc))
+	seen := make(map[int]bool, len(acc))
+	for _, idx := range order {
+		if seen[idx] {
+			continue
+		}
+		seen[idx] = true
+		d := *acc[idx]
+		d.Raw = nil
+		bytes, err := json.Marshal(d)
+		if err == nil {
+			d.Raw = bytes
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
 func (s *Service) ParamsCompletions(ctx context.Context, params openai.ChatCompletionNewParams, provider *ProviderOption, reasoning *ReasoningOption) (CompletionResponse, error) {
 	var response *http.Response
 	var err error
@@ -136,6 +218,7 @@ func (s *Service) ParamsCompletions(ctx context.Context, params openai.ChatCompl
 
 	message := completion.Choices[0].Message
 	reasoningContent := extractReasoning(message.JSON.ExtraFields)
+	reasoningDetails := extractReasoningDetails(message.JSON.ExtraFields)
 
 	routedProvider := extractStringFromExtraFields(completion.JSON.ExtraFields, "provider", "provider_name")
 	if routedProvider == "" {
@@ -146,10 +229,11 @@ func (s *Service) ParamsCompletions(ctx context.Context, params openai.ChatCompl
 	}
 
 	return CompletionResponse{
-		Message:   message,
-		Reasoning: reasoningContent,
-		Provider:  routedProvider,
-		Usage:     UsageFromOpenAI(completion.Usage),
+		Message:          message,
+		Reasoning:        reasoningContent,
+		ReasoningDetails: reasoningDetails,
+		Provider:         routedProvider,
+		Usage:            UsageFromOpenAI(completion.Usage),
 	}, nil
 }
 
@@ -200,6 +284,9 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 	// Accumulate tool calls across chunks
 	toolCallsMap := make(map[int]*openai.ChatCompletionMessageToolCallUnion)
 
+	reasoningDetailsAcc := make(map[int]*ReasoningDetail)
+	var reasoningDetailsOrder []int
+
 	for stream.Next() {
 		chunk := stream.Current()
 
@@ -238,6 +325,11 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 		}
 
 		streamChunk.Reasoning = extractRawStringFromExtraFields(delta.JSON.ExtraFields, "reasoning", "reasoning_content")
+
+		if fragments := extractReasoningDetails(delta.JSON.ExtraFields); len(fragments) > 0 {
+			streamChunk.ReasoningDetails = fragments
+			mergeReasoningDetailFragments(reasoningDetailsAcc, &reasoningDetailsOrder, fragments)
+		}
 
 		// Handle tool calls if present
 		if len(delta.ToolCalls) > 0 {
@@ -285,8 +377,9 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 	// Send final chunk with usage information if available
 	// Note: OpenAI streaming API may not always provide usage information
 	finalChunk := StreamChunk{
-		Done:     true,
-		Provider: routedProvider,
+		Done:             true,
+		Provider:         routedProvider,
+		ReasoningDetails: finalizeMergedReasoningDetails(reasoningDetailsAcc, reasoningDetailsOrder),
 	}
 	if hasFinalUsage {
 		finalChunk.Usage = &finalUsage
