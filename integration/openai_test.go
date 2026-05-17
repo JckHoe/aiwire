@@ -7,6 +7,7 @@ import (
 
 	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/responses"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -29,6 +30,35 @@ func TestOpenAI_Embedding(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, embedding)
 	assert.Equal(t, 1536, len(embedding))
+}
+
+func TestOpenAI_Respond(t *testing.T) {
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENAI_API_KEY"), "https://api.openai.com/v1")
+	input := responses.ResponseInputParam{
+		responses.ResponseInputItemParamOfMessage("Hello, can you tell me a joke?", responses.EasyInputMessageRoleUser),
+	}
+
+	resp, err := service.Respond(t.Context(), input, nil, aiwire.ResponsesOption{
+		Model:       "gpt-4.1-nano",
+		Temperature: 0.7,
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp.ID)
+
+	var text string
+	for _, item := range resp.Output {
+		for _, c := range item.Content {
+			if c.Type == "output_text" {
+				text += c.Text
+			}
+		}
+	}
+	assert.NotEmpty(t, text)
+
+	t.Logf("Response: %s", text)
+	t.Logf("Status: %s", resp.Status)
+	t.Logf("Provider: %s", resp.Provider)
+	logUsage(t, resp.Usage)
 }
 
 func TestOpenAI_Streaming(t *testing.T) {
