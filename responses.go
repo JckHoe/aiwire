@@ -3,12 +3,25 @@ package aiwire
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 )
+
+func (r ResponsesResponse) OutputText() string {
+	var b strings.Builder
+	for _, item := range r.Output {
+		for _, c := range item.Content {
+			if c.Type == "output_text" {
+				b.WriteString(c.Text)
+			}
+		}
+	}
+	return b.String()
+}
 
 func buildResponsesParams(input responses.ResponseInputParam, tools []responses.ToolUnionParam, opt ResponsesOption) responses.ResponseNewParams {
 	params := responses.ResponseNewParams{

@@ -147,14 +147,7 @@ func TestOpenRouter_Respond(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, resp.ID)
 
-	var text string
-	for _, item := range resp.Output {
-		for _, c := range item.Content {
-			if c.Type == "output_text" {
-				text += c.Text
-			}
-		}
-	}
+	text := resp.OutputText()
 	assert.NotEmpty(t, text)
 
 	t.Logf("Response: %s", text)
