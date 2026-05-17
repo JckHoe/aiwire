@@ -108,6 +108,10 @@ type Completion interface {
 	Models(ctx context.Context) (*pagination.Page[openai.Model], error)
 }
 
+// Experimental: the Responses API surface (ResponsesOption, ResponsesResponse,
+// ResponsesStreamChunk, ResponsesStreamCallback, and the Responses interface)
+// is in beta and may change without notice. OpenRouter's /v1/responses is
+// itself a beta endpoint and is stateless (PreviousResponseID / Store ignored).
 type ResponsesOption struct {
 	Model           string
 	Temperature     float64
@@ -122,6 +126,7 @@ type ResponsesOption struct {
 	ResponseFormat     responses.ResponseFormatTextConfigUnionParam
 }
 
+// Experimental: see [ResponsesOption].
 type ResponsesResponse struct {
 	ID       string
 	Status   string
@@ -130,6 +135,7 @@ type ResponsesResponse struct {
 	Usage    Usage
 }
 
+// Experimental: see [ResponsesOption].
 type ResponsesStreamChunk struct {
 	Type        string
 	Delta       string
@@ -143,8 +149,10 @@ type ResponsesStreamChunk struct {
 	Usage       *Usage
 }
 
+// Experimental: see [ResponsesOption].
 type ResponsesStreamCallback func(chunk ResponsesStreamChunk) error
 
+// Experimental: see [ResponsesOption].
 type Responses interface {
 	Respond(
 		ctx context.Context,

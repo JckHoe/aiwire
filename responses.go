@@ -13,6 +13,8 @@ import (
 )
 
 // OutputText concatenates every output_text fragment across the response items.
+//
+// Experimental: see [ResponsesOption].
 func (r ResponsesResponse) OutputText() string {
 	var b strings.Builder
 	for _, item := range r.Output {
@@ -64,6 +66,9 @@ func responseFormatSet(f responses.ResponseFormatTextConfigUnionParam) bool {
 	return f.OfText != nil || f.OfJSONSchema != nil || f.OfJSONObject != nil
 }
 
+// Respond sends a request to /v1/responses.
+//
+// Experimental: see [ResponsesOption].
 func (s *Service) Respond(
 	ctx context.Context,
 	input responses.ResponseInputParam,
@@ -95,6 +100,9 @@ func (s *Service) Respond(
 	}, nil
 }
 
+// RespondStream sends a streaming request to /v1/responses.
+//
+// Experimental: see [ResponsesOption].
 func (s *Service) RespondStream(
 	ctx context.Context,
 	input responses.ResponseInputParam,
