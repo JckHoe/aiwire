@@ -14,6 +14,7 @@ A Go library for building AI agents with tool-calling support. Works with any Op
 - Token usage tracking across multi-step interactions
 - Provider-agnostic via the `Completion` interface
 - Reasoning capture and replay across loop iterations (OpenRouter — see [docs/reasoning.md](docs/reasoning.md))
+- `Responses` interface for OpenAI's `/v1/responses` shape (**experimental** — see note below)
 
 ## Install
 
@@ -28,6 +29,10 @@ The library has three main components:
 - **Service** — connects to an OpenAI-compatible API (e.g. OpenRouter) and handles completions
 - **Agent** — orchestrates multi-step interactions, parsing tool calls from the LLM and executing them in a loop
 - **Tool** — interface for defining tools the agent can invoke
+
+## Experimental: Responses API
+
+`Service.Respond` / `Service.RespondStream` and the surrounding types (`Responses`, `ResponsesOption`, `ResponsesResponse`, `ResponsesStreamChunk`) target the `/v1/responses` endpoint and are in beta. The shape may change without notice. OpenRouter's `/v1/responses` is itself a beta endpoint and runs in stateless mode — `PreviousResponseID` and `Store` are honored by OpenAI and ignored by OpenRouter.
 
 ## License
 

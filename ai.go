@@ -6,11 +6,10 @@ package aiwire
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/pagination"
-	"github.com/openai/openai-go/v3/packages/respjson"
+	"github.com/openai/openai-go/v3/responses"
 )
 
 type CompletionOption struct {
@@ -20,24 +19,6 @@ type CompletionOption struct {
 	MaxTokens      *int
 	ResponseFormat openai.ChatCompletionNewParamsResponseFormatUnion
 	Reasoning      *ReasoningOption
-}
-
-type ReasoningEffort string
-
-const (
-	ReasoningEffortXHigh   ReasoningEffort = "xhigh"
-	ReasoningEffortHigh    ReasoningEffort = "high"
-	ReasoningEffortMedium  ReasoningEffort = "medium"
-	ReasoningEffortLow     ReasoningEffort = "low"
-	ReasoningEffortMinimal ReasoningEffort = "minimal"
-	ReasoningEffortNone    ReasoningEffort = "none"
-)
-
-type ReasoningOption struct {
-	Effort    ReasoningEffort
-	MaxTokens *int
-	Exclude   bool
-	Summary   string // OpenAI gpt-5 reasoning summary verbosity: "auto" | "concise" | "detailed"
 }
 
 type ProviderDataCollection string
@@ -102,144 +83,10 @@ type StreamChunk struct {
 	ToolResults      []StreamToolResult
 }
 
-// ReasoningDetail is one entry of OpenRouter's reasoning_details array.
-// Raw is the verbatim wire bytes — Type/Index are surfaced for filtering
-// and slot keying; everything else lives in Raw and round-trips opaquely.
-type ReasoningDetail struct {
-	Type  string `json:"type,omitempty"`
-	Index int    `json:"index"`
-
-	Raw json.RawMessage `json:"-"`
-}
-
-func (r ReasoningDetail) MarshalJSON() ([]byte, error) {
-	if len(r.Raw) > 0 {
-		return r.Raw, nil
-	}
-	type alias ReasoningDetail
-	return json.Marshal(alias(r))
-}
-
-func UsageFromOpenAI(u openai.CompletionUsage) Usage {
-	out := Usage{
-		PromptTokens:     u.PromptTokens,
-		CompletionTokens: u.CompletionTokens,
-		TotalTokens:      u.TotalTokens,
-		PromptTokensDetails: PromptTokensDetails{
-			AudioTokens:  u.PromptTokensDetails.AudioTokens,
-			CachedTokens: u.PromptTokensDetails.CachedTokens,
-		},
-		CompletionTokensDetails: CompletionTokensDetails{
-			AcceptedPredictionTokens: u.CompletionTokensDetails.AcceptedPredictionTokens,
-			AudioTokens:              u.CompletionTokensDetails.AudioTokens,
-			ReasoningTokens:          u.CompletionTokensDetails.ReasoningTokens,
-			RejectedPredictionTokens: u.CompletionTokensDetails.RejectedPredictionTokens,
-		},
-	}
-
-	cacheCreationSet := false
-	if v, ok := extraInt64(u.JSON.ExtraFields, "cache_creation_input_tokens"); ok {
-		out.PromptTokensDetails.CacheCreationTokens = v
-		cacheCreationSet = true
-	}
-	if !u.PromptTokensDetails.JSON.CachedTokens.Valid() {
-		if v, ok := extraInt64(u.JSON.ExtraFields, "cache_read_input_tokens"); ok {
-			out.PromptTokensDetails.CachedTokens = v
-		}
-	}
-	if !cacheCreationSet {
-		if v, ok := extraInt64(u.PromptTokensDetails.JSON.ExtraFields, "cache_creation_tokens"); ok {
-			out.PromptTokensDetails.CacheCreationTokens = v
-		} else if v, ok := extraInt64(u.PromptTokensDetails.JSON.ExtraFields, "cache_write_tokens"); ok {
-			out.PromptTokensDetails.CacheCreationTokens = v
-		}
-	}
-
-	if v, ok := extraFloat64(u.JSON.ExtraFields, "cache_discount"); ok {
-		out.CacheDiscount = v
-	}
-	if v, ok := extraFloat64(u.JSON.ExtraFields, "cost"); ok {
-		out.Cost = v
-	}
-	return out
-}
-
-func extraInt64(extras map[string]respjson.Field, key string) (int64, bool) {
-	f, ok := extras[key]
-	if !ok {
-		return 0, false
-	}
-	raw := f.Raw()
-	if raw == "" || raw == "null" {
-		return 0, false
-	}
-	var v int64
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return 0, false
-	}
-	return v, true
-}
-
-func extraFloat64(extras map[string]respjson.Field, key string) (float64, bool) {
-	f, ok := extras[key]
-	if !ok {
-		return 0, false
-	}
-	raw := f.Raw()
-	if raw == "" || raw == "null" {
-		return 0, false
-	}
-	var v float64
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return 0, false
-	}
-	return v, true
-}
-
-func (u *Usage) Add(src Usage) {
-	u.PromptTokens += src.PromptTokens
-	u.CompletionTokens += src.CompletionTokens
-	u.TotalTokens += src.TotalTokens
-
-	u.PromptTokensDetails.AudioTokens += src.PromptTokensDetails.AudioTokens
-	u.PromptTokensDetails.CachedTokens += src.PromptTokensDetails.CachedTokens
-	u.PromptTokensDetails.CacheCreationTokens += src.PromptTokensDetails.CacheCreationTokens
-
-	u.CompletionTokensDetails.AcceptedPredictionTokens += src.CompletionTokensDetails.AcceptedPredictionTokens
-	u.CompletionTokensDetails.AudioTokens += src.CompletionTokensDetails.AudioTokens
-	u.CompletionTokensDetails.ReasoningTokens += src.CompletionTokensDetails.ReasoningTokens
-	u.CompletionTokensDetails.RejectedPredictionTokens += src.CompletionTokensDetails.RejectedPredictionTokens
-
-	u.CacheDiscount += src.CacheDiscount
-	u.Cost += src.Cost
-}
-
 type StreamToolResult struct {
 	Name    string
 	Content string
 	Error   error
-}
-
-// AssistantMessageWithReasoning builds an assistant message param with
-// reasoning_details attached for replay. Empty details yields a plain message.
-func AssistantMessageWithReasoning(
-	content string,
-	toolCalls []openai.ChatCompletionMessageToolCallUnion,
-	details []ReasoningDetail,
-) openai.ChatCompletionMessageParamUnion {
-	msg := openai.ChatCompletionMessage{
-		Role:      "assistant",
-		Content:   content,
-		ToolCalls: toolCalls,
-	}
-	if len(details) == 0 {
-		return msg.ToParam()
-	}
-	p := msg.ToAssistantMessageParam()
-	p.SetExtraFields(map[string]any{
-		"reasoning_details": details,
-	})
-	return openai.ChatCompletionMessageParamUnion{OfAssistant: &p}
 }
 
 type StreamCallback func(chunk StreamChunk) error
@@ -259,6 +106,68 @@ type Completion interface {
 		callback StreamCallback) error
 
 	Models(ctx context.Context) (*pagination.Page[openai.Model], error)
+}
+
+// Experimental: the Responses API surface (ResponsesOption, ResponsesResponse,
+// ResponsesStreamChunk, ResponsesStreamCallback, and the Responses interface)
+// is in beta and may change without notice. OpenRouter's /v1/responses is
+// itself a beta endpoint and is stateless (PreviousResponseID / Store ignored).
+type ResponsesOption struct {
+	Model           string
+	Temperature     float64
+	MaxOutputTokens *int
+	Instructions    string
+	// Honored by OpenAI; OpenRouter ignores it (Beta is stateless).
+	PreviousResponseID string
+	Store              *bool
+	Provider           *ProviderOption
+	Reasoning          *ReasoningOption
+	Include            []string
+	ResponseFormat     responses.ResponseFormatTextConfigUnionParam
+}
+
+// Experimental: see [ResponsesOption].
+type ResponsesResponse struct {
+	ID       string
+	Status   string
+	Output   []responses.ResponseOutputItemUnion
+	Provider string
+	Usage    Usage
+}
+
+// Experimental: see [ResponsesOption].
+type ResponsesStreamChunk struct {
+	Type        string
+	Delta       string
+	Item        *responses.ResponseOutputItemUnion
+	ItemID      string
+	OutputIndex int64
+	ResponseID  string
+	Provider    string
+	Status      string
+	Done        bool
+	Usage       *Usage
+}
+
+// Experimental: see [ResponsesOption].
+type ResponsesStreamCallback func(chunk ResponsesStreamChunk) error
+
+// Experimental: see [ResponsesOption].
+type Responses interface {
+	Respond(
+		ctx context.Context,
+		input responses.ResponseInputParam,
+		tools []responses.ToolUnionParam,
+		opt ResponsesOption,
+	) (ResponsesResponse, error)
+
+	RespondStream(
+		ctx context.Context,
+		input responses.ResponseInputParam,
+		tools []responses.ToolUnionParam,
+		opt ResponsesOption,
+		callback ResponsesStreamCallback,
+	) error
 }
 
 type Embedding interface {

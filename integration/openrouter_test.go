@@ -9,6 +9,7 @@ import (
 
 	"github.com/lwlee2608/aiwire"
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/responses"
 	"github.com/openai/openai-go/v3/shared"
 	"github.com/stretchr/testify/assert"
 )
@@ -124,6 +125,35 @@ func TestOpenRouter_ProviderOrder(t *testing.T) {
 	assert.NotEmpty(t, response.Message.Content)
 	assert.NotEmpty(t, response.Provider)
 	t.Logf("Routed provider: %s", response.Provider)
+}
+
+func TestOpenRouter_Respond(t *testing.T) {
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
+	input := responses.ResponseInputParam{
+		responses.ResponseInputItemParamOfMessage("Hello, can you tell me a joke?", responses.EasyInputMessageRoleUser),
+	}
+
+	resp, err := service.Respond(context.Background(), input, nil, aiwire.ResponsesOption{
+		Model:       "z-ai/glm-4.7",
+		Temperature: 0.7,
+		Provider: &aiwire.ProviderOption{
+			AllowFallbacks: true,
+			Sort:           "throughput",
+		},
+		Reasoning: &aiwire.ReasoningOption{
+			Effort: aiwire.ReasoningEffortLow,
+		},
+	})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp.ID)
+
+	text := resp.OutputText()
+	assert.NotEmpty(t, text)
+
+	t.Logf("Response: %s", text)
+	t.Logf("Status: %s", resp.Status)
+	t.Logf("Provider: %s", resp.Provider)
+	logUsage(t, resp.Usage)
 }
 
 func TestOpenRouter_Streaming(t *testing.T) {
