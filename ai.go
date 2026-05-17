@@ -12,6 +12,7 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
+// CompletionOption configures a chat completion request.
 type CompletionOption struct {
 	Model          string
 	Temperature    float64
@@ -21,6 +22,7 @@ type CompletionOption struct {
 	Reasoning      *ReasoningOption
 }
 
+// ProviderDataCollection controls whether the upstream provider may retain request data.
 type ProviderDataCollection string
 
 const (
@@ -28,6 +30,8 @@ const (
 	ProviderDataCollectionDeny  ProviderDataCollection = "deny"
 )
 
+// ProviderOption holds OpenRouter-style provider routing preferences.
+// Forwarded as the `provider` field on the request body.
 type ProviderOption struct {
 	AllowFallbacks    bool
 	RequireParameters bool
@@ -37,6 +41,7 @@ type ProviderOption struct {
 	Ignore            []string
 }
 
+// Usage is the normalized token accounting returned by a completion or response.
 type Usage struct {
 	PromptTokens     int64
 	CompletionTokens int64
@@ -70,6 +75,8 @@ type CompletionResponse struct {
 	Usage            Usage
 }
 
+// StreamChunk is one event in a streaming completion. Done marks the
+// terminal chunk, at which point Usage and ReasoningDetails (if any) are populated.
 type StreamChunk struct {
 	Content          string
 	Reasoning        string
@@ -89,6 +96,7 @@ type StreamToolResult struct {
 	Error   error
 }
 
+// StreamCallback receives each StreamChunk. Returning a non-nil error aborts the stream.
 type StreamCallback func(chunk StreamChunk) error
 
 type Completion interface {

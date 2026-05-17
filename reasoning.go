@@ -17,6 +17,8 @@ const (
 	ReasoningEffortNone    ReasoningEffort = "none"
 )
 
+// ReasoningOption controls reasoning behavior. Forwarded as the `reasoning`
+// field on the request body for OpenRouter-style endpoints.
 type ReasoningOption struct {
 	Effort    ReasoningEffort
 	MaxTokens *int
@@ -42,7 +44,9 @@ func (r ReasoningDetail) MarshalJSON() ([]byte, error) {
 	return json.Marshal(alias(r))
 }
 
-// Empty details yields a plain message.
+// AssistantMessageWithReasoning builds an assistant message that carries
+// reasoning_details alongside content and tool calls, so the model can replay
+// its prior reasoning on the next loop iteration. Empty details yields a plain message.
 func AssistantMessageWithReasoning(
 	content string,
 	toolCalls []openai.ChatCompletionMessageToolCallUnion,

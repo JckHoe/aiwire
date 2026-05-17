@@ -9,8 +9,12 @@ import (
 	"github.com/openai/openai-go/v3"
 )
 
+// ErrMaxStepsExceeded is returned by Agent.Execute / Agent.ExecuteStream when
+// the loop hits maxSteps without the model producing a final tool-free answer.
 var ErrMaxStepsExceeded = errors.New("max steps exceeded")
 
+// ToolResult is the value returned by a Tool.Execute call. Content is the
+// string fed back to the model; Error is informational and does not abort the loop.
 type ToolResult interface {
 	Content() string
 	Error() error
@@ -31,6 +35,9 @@ func (t *SimpleToolResult) Error() error {
 
 type ToolName string
 
+// Tool is invoked by the agent when the model emits a matching tool call.
+// Definition returns the OpenAI tool schema; Execute runs the tool with the
+// model-supplied arguments.
 type Tool interface {
 	Definition() openai.ChatCompletionToolUnionParam
 	Execute(ctx context.Context, inputs map[string]any) (ToolResult, error)
@@ -44,11 +51,13 @@ type AgentResult struct {
 	Usage       Usage
 }
 
+// Agent orchestrates a multi-step completion-and-tool-call loop against a Completion service.
 type Agent struct {
 	aiService Completion
 	maxSteps  int
 }
 
+// NewAgent returns an Agent that drives aiService for at most maxSteps iterations per run.
 func NewAgent(aiService Completion, maxSteps int) *Agent {
 	return &Agent{
 		aiService: aiService,
@@ -107,6 +116,9 @@ func (a *Agent) executeToolCall(
 	return
 }
 
+// Execute runs the agent loop without streaming and returns the final result.
+// It returns ErrMaxStepsExceeded if the loop reaches maxSteps without a tool-free
+// assistant message; the partial result is still returned in that case.
 func (a *Agent) Execute(
 	ctx context.Context,
 	messages []openai.ChatCompletionMessageParamUnion,
@@ -118,7 +130,9 @@ func (a *Agent) Execute(
 	return a.execute(ctx, messages, tools, option, nil, preCallback, postCallback)
 }
 
-// ExecuteStream performs the agent loop with streaming support
+// ExecuteStream runs the agent loop and forwards each StreamChunk to streamCallback.
+// The Done flag is only set on the final terminal chunk; intermediate completions
+// suppress it so callers can treat the stream as a single conversation.
 func (a *Agent) ExecuteStream(
 	ctx context.Context,
 	messages []openai.ChatCompletionMessageParamUnion,

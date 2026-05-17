@@ -13,15 +13,19 @@ import (
 	"github.com/openai/openai-go/v3/packages/respjson"
 )
 
+// Config holds the credentials and endpoint for an OpenAI-compatible service.
 type Config struct {
 	ApiKey  string `mask:"first=3,last=4"`
 	BaseUrl string
 }
 
+// Service is an OpenAI-compatible client implementing Completion, Responses, and Embedding.
 type Service struct {
 	client openai.Client
 }
 
+// NewOpenAIService returns a Service pointed at baseUrl authenticated with apiKey.
+// baseUrl may target OpenAI, OpenRouter, or any compatible endpoint.
 func NewOpenAIService(apiKey string, baseUrl string) *Service {
 	client := openai.NewClient(
 		option.WithAPIKey(apiKey),
@@ -263,6 +267,8 @@ func (a *reasoningAccum) finalize() []ReasoningDetail {
 	return out
 }
 
+// ParamsCompletions sends a chat completion request using raw OpenAI params.
+// Prefer Completions unless you need fields not exposed by CompletionOption.
 func (s *Service) ParamsCompletions(ctx context.Context, params openai.ChatCompletionNewParams, provider *ProviderOption, reasoning *ReasoningOption) (CompletionResponse, error) {
 	var response *http.Response
 	var err error
@@ -324,7 +330,9 @@ func (s *Service) Completions(
 	return s.ParamsCompletions(ctx, params, option.Provider, option.Reasoning)
 }
 
-// ParamsCompletionsStream initiates a streaming completion request
+// ParamsCompletionsStream sends a streaming chat completion request using raw
+// OpenAI params. Prefer CompletionsStream unless you need fields not exposed by
+// CompletionOption. Tool-call deltas are reassembled before being delivered.
 func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.ChatCompletionNewParams, provider *ProviderOption, reasoning *ReasoningOption, callback StreamCallback) error {
 	var response *http.Response
 	var finalUsage Usage
@@ -453,7 +461,8 @@ func (s *Service) ParamsCompletionsStream(ctx context.Context, params openai.Cha
 	return nil
 }
 
-// CompletionsStream performs a streaming completion request
+// CompletionsStream sends a streaming chat completion request. The final
+// callback invocation has Done=true and carries Usage when the provider reports it.
 func (s *Service) CompletionsStream(
 	ctx context.Context,
 	messages []openai.ChatCompletionMessageParamUnion,
@@ -479,7 +488,6 @@ func (s *Service) CompletionsStream(
 	return s.ParamsCompletionsStream(ctx, params, option.Provider, option.Reasoning, callback)
 }
 
-// Models retrieves the list of available models
 func (s *Service) Models(ctx context.Context) (*pagination.Page[openai.Model], error) {
 	return s.client.Models.List(ctx)
 }

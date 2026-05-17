@@ -8,6 +8,8 @@ import (
 	"github.com/openai/openai-go/v3/responses"
 )
 
+// UsageFromOpenAI converts an OpenAI completion usage block into a normalized Usage,
+// pulling provider-specific extras (cache tokens, cost, discount) out of ExtraFields.
 func UsageFromOpenAI(u openai.CompletionUsage) Usage {
 	out := Usage{
 		PromptTokens:     u.PromptTokens,
@@ -87,6 +89,8 @@ func UsageFromResponses(u responses.ResponseUsage) Usage {
 	return out
 }
 
+// Add accumulates src into u, summing every token, cost, and discount field.
+// Used by the agent loop to roll usage up across iterations.
 func (u *Usage) Add(src Usage) {
 	u.PromptTokens += src.PromptTokens
 	u.CompletionTokens += src.CompletionTokens

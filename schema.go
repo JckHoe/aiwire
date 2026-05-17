@@ -15,6 +15,9 @@ func generateSchema[T any]() map[string]any {
 	return reflectSchema(reflect.TypeOf(v), map[reflect.Type]bool{})
 }
 
+// GenerateSchema reflects T into a JSON Schema map. Use the `json` tag to
+// rename fields, `jsonschema:"required"` to mark required fields, and
+// `jsonschema:"enum=a,enum=b"` to constrain string values.
 func GenerateSchema[T any]() any {
 	return generateSchema[T]()
 }
