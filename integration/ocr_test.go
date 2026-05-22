@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"fmt"
 	"strings"
@@ -18,6 +19,11 @@ import (
 const ocrImageURL = "https://placehold.co/400x100/000000/FFFFFF/png?text=OCR+TEST+42"
 
 const ocrPDFText = "AIWIRE OCR 7391"
+
+// ocrBase64PNG is a 300x80 PNG showing "BASE64 OCR 99" in white on black.
+//
+//go:embed testdata/ocr_base64.png
+var ocrBase64PNG []byte
 
 func runOCRImage(t *testing.T, service *aiwire.Service, opt aiwire.CompletionOption) {
 	t.Helper()
@@ -42,6 +48,33 @@ func runOCRImage(t *testing.T, service *aiwire.Service, opt aiwire.CompletionOpt
 	assert.Contains(t, got, "OCR")
 	assert.Contains(t, got, "TEST")
 	assert.Contains(t, got, "42")
+}
+
+func runOCRImageBase64(t *testing.T, service *aiwire.Service, opt aiwire.CompletionOption) {
+	t.Helper()
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(ocrBase64PNG)
+
+	messages := []openai.ChatCompletionMessageParamUnion{
+		openai.UserMessage([]openai.ChatCompletionContentPartUnionParam{
+			openai.TextContentPart("Read the text in this image. Reply with only the text, no commentary."),
+			openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+				URL: dataURL,
+			}),
+		}),
+	}
+
+	resp, err := service.Completions(context.Background(), messages, nil, opt)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, resp.Message.Content)
+
+	t.Logf("Image (base64) OCR response: %s", resp.Message.Content)
+	t.Logf("Provider: %s", resp.Provider)
+	logUsage(t, resp.Usage)
+
+	got := strings.ToUpper(resp.Message.Content)
+	assert.Contains(t, got, "BASE64")
+	assert.Contains(t, got, "OCR")
+	assert.Contains(t, got, "99")
 }
 
 func runOCRPDF(t *testing.T, service *aiwire.Service, opt aiwire.CompletionOption) {
@@ -81,6 +114,14 @@ func TestOpenAI_OCR_Image(t *testing.T) {
 	})
 }
 
+func TestOpenAI_OCR_ImageBase64(t *testing.T) {
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENAI_API_KEY"), "https://api.openai.com/v1")
+	runOCRImageBase64(t, service, aiwire.CompletionOption{
+		Model:       "gpt-4.1-mini",
+		Temperature: 0.0,
+	})
+}
+
 func TestOpenAI_OCR_PDF(t *testing.T) {
 	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENAI_API_KEY"), "https://api.openai.com/v1")
 	runOCRPDF(t, service, aiwire.CompletionOption{
@@ -92,6 +133,14 @@ func TestOpenAI_OCR_PDF(t *testing.T) {
 func TestOpenRouter_OCR_Image(t *testing.T) {
 	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 	runOCRImage(t, service, aiwire.CompletionOption{
+		Model:       "z-ai/glm-5v-turbo",
+		Temperature: 0.0,
+	})
+}
+
+func TestOpenRouter_OCR_ImageBase64(t *testing.T) {
+	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
+	runOCRImageBase64(t, service, aiwire.CompletionOption{
 		Model:       "z-ai/glm-5v-turbo",
 		Temperature: 0.0,
 	})
