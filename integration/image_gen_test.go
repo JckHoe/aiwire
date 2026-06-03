@@ -29,6 +29,7 @@ var imageGenModels = []imageGenCase{
 	{model: "openai/gpt-5-image"},
 	{model: "google/gemini-3.1-flash-image-preview"},
 	{model: "x-ai/grok-imagine-image-quality", modalities: []string{"image"}},
+	{model: "bytedance-seed/seedream-4.5", modalities: []string{"image"}},
 }
 
 // modelSlug turns a model id into a filesystem-safe name for saved images.
@@ -69,6 +70,7 @@ func TestOpenRouter_ImageGeneration(t *testing.T) {
 
 	for _, tc := range imageGenModels {
 		t.Run(tc.model, func(t *testing.T) {
+			t.Parallel()
 			resp, err := service.GenerateImage(context.Background(), aiwire.ImageOption{
 				Model:       tc.model,
 				Prompt:      "A simple solid red square on a white background.",
@@ -99,6 +101,7 @@ func TestOpenRouter_ImageEditing(t *testing.T) {
 
 	for _, tc := range imageGenModels {
 		t.Run(tc.model, func(t *testing.T) {
+			t.Parallel()
 			// ocrBase64PNG is embedded in ocr_test.go (same package): a 300x80 PNG.
 			resp, err := service.GenerateImage(context.Background(), aiwire.ImageOption{
 				Model:  tc.model,
