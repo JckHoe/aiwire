@@ -30,6 +30,9 @@ type ImageOption struct {
 	Images      []ImageInput   // optional source images for editing or reference
 	AspectRatio string         // e.g. "16:9"; forwarded inside image_config
 	ConfigExtra map[string]any // extra image_config knobs, merged as-is
+	// Modalities sets the requested output modalities; defaults to
+	// ["image", "text"]. Use ["image"] for image-only models that reject text.
+	Modalities []string
 	// Provider holds OpenRouter-style routing; nil for other backends.
 	Provider *ProviderOption
 }
@@ -100,10 +103,15 @@ func (s *Service) GenerateImage(ctx context.Context, opt ImageOption) (ImageResp
 		}))
 	}
 
+	modalities := opt.Modalities
+	if len(modalities) == 0 {
+		modalities = []string{"image", "text"}
+	}
+
 	params := openai.ChatCompletionNewParams{
 		Model:      opt.Model,
 		Messages:   []openai.ChatCompletionMessageParamUnion{openai.UserMessage(parts)},
-		Modalities: []string{"image", "text"},
+		Modalities: modalities,
 	}
 
 	reqOpts := buildRequestOptions(opt.Provider, nil)

@@ -15,11 +15,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var imageGenModels = []string{
-	"google/gemini-2.5-flash-image",
-	// "openai/gpt-5.4-image-2",
-	// "openai/gpt-5-image",
-	// "google/gemini-3.1-flash-image-preview",
+// imageGenCase pairs a model with its output modalities. Most models emit
+// both image and text (nil = aiwire's default); image-only models like
+// grok-imagine must request just ["image"] or OpenRouter returns a 404.
+type imageGenCase struct {
+	model      string
+	modalities []string
+}
+
+var imageGenModels = []imageGenCase{
+	{model: "google/gemini-2.5-flash-image"},
+	{model: "openai/gpt-5.4-image-2"},
+	{model: "openai/gpt-5-image"},
+	{model: "google/gemini-3.1-flash-image-preview"},
+	{model: "x-ai/grok-imagine-image-quality", modalities: []string{"image"}},
 }
 
 // modelSlug turns a model id into a filesystem-safe name for saved images.
@@ -58,12 +67,13 @@ func imageMagic(data []byte) string {
 func TestOpenRouter_ImageGeneration(t *testing.T) {
 	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 
-	for _, model := range imageGenModels {
-		t.Run(model, func(t *testing.T) {
+	for _, tc := range imageGenModels {
+		t.Run(tc.model, func(t *testing.T) {
 			resp, err := service.GenerateImage(context.Background(), aiwire.ImageOption{
-				Model:       model,
+				Model:       tc.model,
 				Prompt:      "A simple solid red square on a white background.",
 				AspectRatio: "1:1",
+				Modalities:  tc.modalities,
 			})
 			require.NoError(t, err)
 			require.NotEmpty(t, resp.Images, "expected at least one generated image")
@@ -79,7 +89,7 @@ func TestOpenRouter_ImageGeneration(t *testing.T) {
 			kind := imageMagic(data)
 			t.Logf("First image: mime=%s bytes=%d kind=%s", mime, len(data), kind)
 			assert.NotEmpty(t, kind, "decoded data should be a recognizable image")
-			saveImage(t, "aiwire_image_generation_"+modelSlug(model), kind, data)
+			saveImage(t, "aiwire_image_generation_"+modelSlug(tc.model), kind, data)
 		})
 	}
 }
@@ -87,15 +97,16 @@ func TestOpenRouter_ImageGeneration(t *testing.T) {
 func TestOpenRouter_ImageEditing(t *testing.T) {
 	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 
-	for _, model := range imageGenModels {
-		t.Run(model, func(t *testing.T) {
+	for _, tc := range imageGenModels {
+		t.Run(tc.model, func(t *testing.T) {
 			// ocrBase64PNG is embedded in ocr_test.go (same package): a 300x80 PNG.
 			resp, err := service.GenerateImage(context.Background(), aiwire.ImageOption{
-				Model:  model,
+				Model:  tc.model,
 				Prompt: "Add a bright yellow border around this image.",
 				Images: []aiwire.ImageInput{
 					aiwire.ImageInputFromBytes("image/png", ocrBase64PNG),
 				},
+				Modalities: tc.modalities,
 			})
 			require.NoError(t, err)
 			require.NotEmpty(t, resp.Images, "expected at least one edited image")
@@ -109,7 +120,7 @@ func TestOpenRouter_ImageEditing(t *testing.T) {
 			kind := imageMagic(data)
 			t.Logf("Edited image: mime=%s bytes=%d kind=%s", mime, len(data), kind)
 			assert.NotEmpty(t, kind, "decoded data should be a recognizable image")
-			saveImage(t, "aiwire_image_editing_"+modelSlug(model), kind, data)
+			saveImage(t, "aiwire_image_editing_"+modelSlug(tc.model), kind, data)
 		})
 	}
 }
