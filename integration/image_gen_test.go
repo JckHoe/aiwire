@@ -5,6 +5,8 @@ package integration
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/lwlee2608/aiwire"
@@ -13,6 +15,18 @@ import (
 )
 
 const imageGenModel = "google/gemini-2.5-flash-image"
+
+// saveImage writes data to /tmp/<name>.<ext> and logs the path. ext falls back
+// to "bin" when the container is unrecognized.
+func saveImage(t *testing.T, name, ext string, data []byte) {
+	t.Helper()
+	if ext == "" {
+		ext = "bin"
+	}
+	path := filepath.Join("/tmp", name+"."+ext)
+	require.NoError(t, os.WriteFile(path, data, 0o644))
+	t.Logf("Saved image to %s", path)
+}
 
 // imageMagic returns a short label for a decoded image's container, or "" if unrecognized.
 func imageMagic(data []byte) string {
@@ -52,6 +66,7 @@ func TestOpenRouter_ImageGeneration(t *testing.T) {
 	kind := imageMagic(data)
 	t.Logf("First image: mime=%s bytes=%d kind=%s", mime, len(data), kind)
 	assert.NotEmpty(t, kind, "decoded data should be a recognizable image")
+	saveImage(t, "aiwire_image_generation", kind, data)
 }
 
 func TestOpenRouter_ImageEditing(t *testing.T) {
@@ -77,4 +92,5 @@ func TestOpenRouter_ImageEditing(t *testing.T) {
 	kind := imageMagic(data)
 	t.Logf("Edited image: mime=%s bytes=%d kind=%s", mime, len(data), kind)
 	assert.NotEmpty(t, kind, "decoded data should be a recognizable image")
+	saveImage(t, "aiwire_image_editing", kind, data)
 }
