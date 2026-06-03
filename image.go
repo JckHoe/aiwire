@@ -82,7 +82,7 @@ func (g GeneratedImage) Decode() (mimeType string, data []byte, err error) {
 		return mt, decoded, nil
 	}
 	// Plain (percent-encoded) data URL — uncommon for images, supported for completeness.
-	decoded, err := url.QueryUnescape(payload)
+	decoded, err := url.PathUnescape(payload)
 	if err != nil {
 		return "", nil, fmt.Errorf("aiwire: decode data URL: %w", err)
 	}

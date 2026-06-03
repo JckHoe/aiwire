@@ -22,15 +22,15 @@ func TestGeneratedImageDecode(t *testing.T) {
 }
 
 func TestGeneratedImageDecodePlain(t *testing.T) {
-	mime, data, err := GeneratedImage{URL: "data:text/plain,hello%20world"}.Decode()
+	mime, data, err := GeneratedImage{URL: "data:text/plain,hello%20world+a"}.Decode()
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
 	if mime != "text/plain" {
 		t.Errorf("mime = %q, want text/plain", mime)
 	}
-	if string(data) != "hello world" {
-		t.Errorf("data = %q, want %q", data, "hello world")
+	if string(data) != "hello world+a" {
+		t.Errorf("data = %q, want %q", data, "hello world+a")
 	}
 }
 
