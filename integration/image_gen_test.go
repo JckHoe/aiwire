@@ -73,7 +73,7 @@ func TestOpenRouter_ImageGeneration(t *testing.T) {
 			t.Parallel()
 			resp, err := service.GenerateImage(context.Background(), aiwire.ImageOption{
 				Model:       tc.model,
-				Prompt:      "A simple solid red square on a white background.",
+				Prompt:      "A Warhammer 40k Sister of Battle in ornate black and red power armor, wielding a flaming bolter, standing in a gothic cathedral lit by candlelight, dramatic cinematic lighting.",
 				AspectRatio: "1:1",
 				Modalities:  tc.modalities,
 			})
