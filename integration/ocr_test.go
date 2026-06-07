@@ -101,7 +101,7 @@ func runOCRPDF(t *testing.T, service *aiwire.Service, opt aiwire.CompletionOptio
 	logUsage(t, resp.Usage)
 
 	got := strings.ToUpper(resp.Message.Content)
-	for _, token := range strings.Fields(ocrPDFText) {
+	for token := range strings.FieldsSeq(ocrPDFText) {
 		assert.Contains(t, got, strings.ToUpper(token))
 	}
 }
