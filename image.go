@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -185,9 +186,7 @@ func (s *Service) generateImageViaImages(ctx context.Context, opt ImageOption) (
 	setImageParameter(body, "resolution", opt.Resolution)
 	setImageParameter(body, "quality", opt.Quality)
 	setImageParameter(body, "output_format", opt.OutputFormat)
-	for key, value := range opt.ConfigExtra {
-		body[key] = value
-	}
+	maps.Copy(body, opt.ConfigExtra)
 
 	requestOptions := buildRequestOptions(opt.Provider, nil)
 	var response *http.Response
@@ -248,9 +247,7 @@ func imageConfigMap(opt ImageOption) map[string]any {
 	if opt.AspectRatio != "" {
 		m["aspect_ratio"] = opt.AspectRatio
 	}
-	for k, v := range opt.ConfigExtra {
-		m[k] = v
-	}
+	maps.Copy(m, opt.ConfigExtra)
 	if len(m) == 0 {
 		return nil
 	}
