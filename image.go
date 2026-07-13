@@ -44,7 +44,7 @@ type ImageOption struct {
 	OutputFormat string          // e.g. "png"; used by the images endpoint
 	ConfigExtra  map[string]any  // extra image_config or top-level images endpoint knobs
 	Modalities   []string        // defaults to ["image", "text"]; use ["image"] for image-only models
-	Provider     *ProviderOption // optional OpenRouter-style routing
+	Provider     *ProviderOption // optional OpenRouter-style routing for chat_completions only
 }
 
 // ImageInput is a source image supplied for editing or as a reference.
@@ -162,6 +162,10 @@ func (s *Service) generateImageViaChatCompletions(ctx context.Context, opt Image
 }
 
 func (s *Service) generateImageViaImages(ctx context.Context, opt ImageOption) (ImageResponse, error) {
+	if opt.Provider != nil {
+		return ImageResponse{}, errors.New("aiwire: ImageOption.Provider is unsupported by the images endpoint; use ConfigExtra[\"provider\"] for Images API provider options")
+	}
+
 	body := map[string]any{
 		"model":  opt.Model,
 		"prompt": opt.Prompt,
@@ -185,9 +189,7 @@ func (s *Service) generateImageViaImages(ctx context.Context, opt ImageOption) (
 	setImageParameter(body, "output_format", opt.OutputFormat)
 	maps.Copy(body, opt.ConfigExtra)
 
-	requestOptions := buildRequestOptions(opt.Provider, nil)
 	var response *http.Response
-	requestOptions = append(requestOptions, option.WithResponseInto(&response))
 
 	var result struct {
 		Data []struct {
@@ -199,7 +201,7 @@ func (s *Service) generateImageViaImages(ctx context.Context, opt ImageOption) (
 		ProviderName string                 `json:"provider_name"`
 		Usage        openai.CompletionUsage `json:"usage"`
 	}
-	if err := s.client.Post(ctx, "images", body, &result, requestOptions...); err != nil {
+	if err := s.client.Post(ctx, "images", body, &result, option.WithResponseInto(&response)); err != nil {
 		return ImageResponse{}, err
 	}
 
