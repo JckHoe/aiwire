@@ -36,18 +36,15 @@ const (
 type ImageOption struct {
 	Model        string
 	Prompt       string
-	Images       []ImageInput   // optional source images for editing or reference
-	Endpoint     ImageEndpoint  // defaults to chat_completions
-	AspectRatio  string         // e.g. "16:9"
-	Resolution   string         // e.g. "2K"; used by the images endpoint
-	Quality      string         // e.g. "high"; used by the images endpoint
-	OutputFormat string         // e.g. "png"; used by the images endpoint
-	ConfigExtra  map[string]any // extra image_config or top-level images endpoint knobs
-	// Modalities sets the requested output modalities; defaults to
-	// ["image", "text"]. Use ["image"] for image-only models that reject text.
-	Modalities []string
-	// Provider holds OpenRouter-style routing; nil for other backends.
-	Provider *ProviderOption
+	Images       []ImageInput    // optional source images for editing or reference
+	Endpoint     ImageEndpoint   // defaults to chat_completions
+	AspectRatio  string          // e.g. "16:9"
+	Resolution   string          // e.g. "2K"; used by the images endpoint
+	Quality      string          // e.g. "high"; used by the images endpoint
+	OutputFormat string          // e.g. "png"; used by the images endpoint
+	ConfigExtra  map[string]any  // extra image_config or top-level images endpoint knobs
+	Modalities   []string        // defaults to ["image", "text"]; use ["image"] for image-only models
+	Provider     *ProviderOption // optional OpenRouter-style routing
 }
 
 // ImageInput is a source image supplied for editing or as a reference.
