@@ -9,13 +9,14 @@ import (
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/packages/pagination"
+	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 )
 
 // CompletionOption configures a chat completion request.
 type CompletionOption struct {
 	Model          string
-	Temperature    float64
+	Temperature    param.Opt[float64]
 	Provider       *ProviderOption
 	MaxTokens      *int
 	ResponseFormat openai.ChatCompletionNewParamsResponseFormatUnion

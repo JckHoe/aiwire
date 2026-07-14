@@ -322,7 +322,7 @@ func (s *Service) Completions(
 	params := openai.ChatCompletionNewParams{
 		Messages:       messages,
 		Model:          option.Model,
-		Temperature:    openai.Float(option.Temperature),
+		Temperature:    option.Temperature,
 		ResponseFormat: option.ResponseFormat,
 	}
 
@@ -480,7 +480,7 @@ func (s *Service) CompletionsStream(
 	params := openai.ChatCompletionNewParams{
 		Messages:       messages,
 		Model:          option.Model,
-		Temperature:    openai.Float(option.Temperature),
+		Temperature:    option.Temperature,
 		ResponseFormat: option.ResponseFormat,
 	}
 
