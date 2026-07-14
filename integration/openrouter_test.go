@@ -21,7 +21,7 @@ func TestOpenRouter_Completion(t *testing.T) {
 
 	runCompletionTest(t, service, messages, aiwire.CompletionOption{
 		Model:       "z-ai/glm-4.7",
-		Temperature: 0.7,
+		Temperature: openai.Float(0.7),
 		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "throughput",
@@ -49,7 +49,7 @@ func TestOpenRouter_ResponseFormat(t *testing.T) {
 
 	response, err := service.Completions(context.Background(), messages, nil, aiwire.CompletionOption{
 		Model:       "z-ai/glm-4.7",
-		Temperature: 0.0,
+		Temperature: openai.Float(0.0),
 		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Order:          []string{"parasail/fp8", "google-vertex", "cerebras/fp16"},
@@ -91,7 +91,7 @@ func TestOpenRouter_ProviderIgnore(t *testing.T) {
 
 	response, err := service.Completions(context.Background(), messages, nil, aiwire.CompletionOption{
 		Model:       "moonshotai/kimi-k2.6",
-		Temperature: 0.7,
+		Temperature: openai.Float(0.7),
 		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "latency",
@@ -113,7 +113,7 @@ func TestOpenRouter_ProviderOrder(t *testing.T) {
 
 	response, err := service.Completions(context.Background(), messages, nil, aiwire.CompletionOption{
 		Model:       "moonshotai/kimi-k2.6",
-		Temperature: 0.7,
+		Temperature: openai.Float(0.7),
 		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Order:          []string{"moonshotai/int4"},
@@ -134,7 +134,7 @@ func TestOpenRouter_Streaming(t *testing.T) {
 
 	runStreamingTest(t, service, messages, aiwire.CompletionOption{
 		Model:       "z-ai/glm-4.7",
-		Temperature: 0.7,
+		Temperature: openai.Float(0.7),
 		Provider: &aiwire.ProviderOption{
 			AllowFallbacks: true,
 			Sort:           "throughput",
