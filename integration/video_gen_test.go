@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	_ "embed"
 	"testing"
 	"time"
 
@@ -11,21 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//go:embed testdata/kitten.webp
+var kittenWebP []byte
+
 func TestOpenRouter_VideoGeneration(t *testing.T) {
 	service := aiwire.NewOpenAIService(keyOrSkip(t, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1")
 
-	// Cheapest config: std tier, shortest clip. ocrBase64PNG (embedded in
-	// ocr_test.go) is reused as the first frame for image-to-video.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	resp, err := service.GenerateVideo(ctx, aiwire.VideoOption{
 		Model:       "kwaivgi/kling-v3.0-std",
-		Prompt:      "The text gently zooms in with a soft glow.",
+		Prompt:      "The kitten gently walks toward the camera.",
 		Duration:    5,
 		AspectRatio: "1:1",
 		FrameImages: []aiwire.VideoFrameImage{
-			aiwire.VideoFrameFromBytes("image/png", ocrBase64PNG, aiwire.VideoFrameFirst),
+			aiwire.VideoFrameFromBytes("image/webp", kittenWebP, aiwire.VideoFrameFirst),
 		},
 	})
 	require.NoError(t, err)
