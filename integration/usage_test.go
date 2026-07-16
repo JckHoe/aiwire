@@ -141,7 +141,7 @@ func (c usageCase) runStream(t *testing.T) {
 	params := openai.ChatCompletionNewParams{
 		Messages:    c.messages(),
 		Model:       c.model,
-		Temperature: 0.0,
+		Temperature: openai.Float(0.0),
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{
 			IncludeUsage: openai.Bool(true),
 		},
