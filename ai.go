@@ -124,6 +124,7 @@ type Completion interface {
 type ResponsesOption struct {
 	Model           string
 	Temperature     float64
+	OmitTemperature bool
 	MaxOutputTokens *int
 	Instructions    string
 	// Honored by OpenAI; OpenRouter ignores it (Beta is stateless).
